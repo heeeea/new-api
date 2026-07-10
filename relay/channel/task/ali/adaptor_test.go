@@ -170,3 +170,19 @@ func TestConvertToAliRequestWan25I2VKeepsLegacyImgURL(t *testing.T) {
 	require.Contains(t, string(body), `"img_url"`)
 	require.NotContains(t, string(body), `"media"`)
 }
+
+func TestProcessAliOtherRatiosPricesWan27AliasesAt1080P(t *testing.T) {
+	for _, modelName := range []string{"wan2.6-i2v-flash", "wan2.6-t2v"} {
+		t.Run(modelName, func(t *testing.T) {
+			ratios, err := ProcessAliOtherRatios(&AliVideoRequest{
+				Model: modelName,
+				Parameters: &AliVideoParameters{
+					Resolution: "1080P",
+				},
+			})
+
+			require.NoError(t, err)
+			require.InDelta(t, 1.0/0.6, ratios["resolution-1080P"], 0.000001)
+		})
+	}
+}

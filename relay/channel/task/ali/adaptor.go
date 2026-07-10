@@ -205,6 +205,14 @@ func ProcessAliOtherRatios(aliReq *AliVideoRequest) (map[string]float64, error) 
 			"720P":  1,
 			"1080P": 1 / 0.6,
 		},
+		"wan2.6-i2v-flash": {
+			"720P":  1,
+			"1080P": 1 / 0.6,
+		},
+		"wan2.6-t2v": {
+			"720P":  1,
+			"1080P": 1 / 0.6,
+		},
 		"wan2.5-t2v-preview": {
 			"480P":  1,
 			"720P":  2,
