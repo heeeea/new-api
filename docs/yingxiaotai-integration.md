@@ -32,6 +32,21 @@ This deployment exposes one OpenAI-compatible base URL and one downstream token.
 | Tencent MPS | `viduq3-turbo`, `viduq3-pro` | TC3 MPS async video | Contract-tested |
 | Tencent MPS | `kling-3.0`, `kling-o1`, `kling-omni` | TC3 MPS async video | Contract-tested |
 | Tencent MPS | `hailuo-2.3-fast`, `hunyuan-video`, `pixverse-v6` | TC3 MPS async video | Contract-tested |
+| Alibaba Bailian | `qwen3.7-plus`, `qwen3.7-max` | Ali compatible chat | Enabled; paid real test pending |
+| Alibaba Bailian | `wan2.7-i2v`, `wan2.7-t2v` | Existing Ali async video adapter and current 2.7 endpoints | Enabled; paid real test pending |
+| Volcengine Ark | `seedream-5-0-pro` | Existing Volcengine image adapter | Enabled with the configured Seedream 5 endpoint; paid real test pending |
+| Volcengine Ark | `doubao-seed-2.1-turbo`, `doubao-seed-2.1-pro` | Ark compatible chat | Enabled; account entitlement and paid real test pending |
+
+## Disabled provider templates
+
+The following channels are intentionally disabled and excluded from the unified token until real credentials are supplied. A disabled template must never be presented as an available model.
+
+| Provider | Models | Remaining requirement |
+| --- | --- | --- |
+| OpenAI | `gpt-image-2`, `sora-2`, `sora-2-pro` | OpenAI API key |
+| DeepSeek | `deepseek-v4-flash`, `deepseek-v4-pro` | DeepSeek API key |
+| Google Gemini | Gemini 3.1 text/image and Veo 3.1 video | Gemini API key |
+| Runway | `runway-gen-4.5`, `runway-gen-4-turbo` | Runway API key and a custom asynchronous task adapter |
 
 ## Compatibility rules added for Yingxiaotai
 
