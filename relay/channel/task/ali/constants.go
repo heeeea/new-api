@@ -8,6 +8,8 @@ var ModelList = []string{
 	"wan2.2-i2v-plus",    // 万相2.2专业版（无声视频）
 	"wanx2.1-i2v-plus",   // 万相2.1专业版（无声视频）
 	"wanx2.1-i2v-turbo",  // 万相2.1极速版（无声视频）
+	"happy-horse-1.1",    // HappyHorse 1.1 参考生视频
+	"happy-horse-1.0",    // HappyHorse 1.0 参考生视频
 }
 
 var ChannelName = "ali"

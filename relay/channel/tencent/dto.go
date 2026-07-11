@@ -1,5 +1,23 @@
 package tencent
 
+type TencentImageRequest struct {
+	Prompt string `json:"Prompt"`
+}
+
+type TencentImageResponse struct {
+	Response struct {
+		RequestID         string   `json:"RequestId"`
+		ResultImage       string   `json:"ResultImage"`
+		ImageURL          string   `json:"ImageUrl"`
+		ResultImageList   []string `json:"ResultImageList"`
+		ResultImageBase64 string   `json:"ResultImageBase64"`
+		Error             *struct {
+			Code    string `json:"Code"`
+			Message string `json:"Message"`
+		} `json:"Error,omitempty"`
+	} `json:"Response"`
+}
+
 type TencentMessage struct {
 	Role    string `json:"Role"`
 	Content string `json:"Content"`

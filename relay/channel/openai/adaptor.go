@@ -427,6 +427,14 @@ func (a *Adaptor) ConvertAudioRequest(c *gin.Context, info *relaycommon.RelayInf
 }
 
 func (a *Adaptor) ConvertImageRequest(c *gin.Context, info *relaycommon.RelayInfo, request dto.ImageRequest) (any, error) {
+	upstreamModel := ""
+	if info != nil && info.ChannelMeta != nil {
+		upstreamModel = info.UpstreamModelName
+	}
+	if strings.HasPrefix(upstreamModel, "agnes-image-") || strings.HasPrefix(request.Model, "agnes-image-") {
+		return convertAgnesImageRequest(request)
+	}
+
 	switch info.RelayMode {
 	case relayconstant.RelayModeImagesEdits:
 		if isJSONRequest(c) {
@@ -558,6 +566,51 @@ func (a *Adaptor) ConvertImageRequest(c *gin.Context, info *relaycommon.RelayInf
 	default:
 		return request, nil
 	}
+}
+
+func convertAgnesImageRequest(request dto.ImageRequest) (map[string]json.RawMessage, error) {
+	responseFormat := request.ResponseFormat
+	request.ResponseFormat = ""
+
+	body, err := common.Marshal(request)
+	if err != nil {
+		return nil, err
+	}
+	var payload map[string]json.RawMessage
+	if err := common.Unmarshal(body, &payload); err != nil {
+		return nil, err
+	}
+	for key, value := range request.Extra {
+		payload[key] = value
+	}
+
+	var extraBody map[string]json.RawMessage
+	if raw := payload["extra_body"]; len(raw) > 0 {
+		if err := common.Unmarshal(raw, &extraBody); err != nil {
+			return nil, fmt.Errorf("invalid Agnes extra_body: %w", err)
+		}
+	}
+	if extraBody == nil {
+		extraBody = make(map[string]json.RawMessage)
+	}
+	if responseFormat != "" {
+		if _, exists := extraBody["response_format"]; !exists {
+			formatJSON, err := common.Marshal(responseFormat)
+			if err != nil {
+				return nil, err
+			}
+			extraBody["response_format"] = formatJSON
+		}
+	}
+	if len(extraBody) > 0 {
+		extraBodyJSON, err := common.Marshal(extraBody)
+		if err != nil {
+			return nil, err
+		}
+		payload["extra_body"] = extraBodyJSON
+	}
+	delete(payload, "response_format")
+	return payload, nil
 }
 
 func isJSONRequest(c *gin.Context) bool {

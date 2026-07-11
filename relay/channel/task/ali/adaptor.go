@@ -54,6 +54,7 @@ type AliVideoInput struct {
 // AliVideoParameters 视频参数
 type AliVideoParameters struct {
 	Resolution   string `json:"resolution,omitempty"`    // 分辨率: 480P/720P/1080P（图生视频、首尾帧生视频）
+	Ratio        string `json:"ratio,omitempty"`         // 画面比例（HappyHorse 等模型）
 	Size         string `json:"size,omitempty"`          // 尺寸: 如 "832*480"（文生视频）
 	Duration     int    `json:"duration,omitempty"`      // 时长: 3-10秒
 	PromptExtend bool   `json:"prompt_extend,omitempty"` // 是否开启prompt智能改写
@@ -446,6 +447,33 @@ func (a *TaskAdaptor) convertToAliRequest(info *relaycommon.RelayInfo, req relay
 
 	if err := normalizeWan27I2VInput(aliReq, req); err != nil {
 		return nil, err
+	}
+	if strings.HasPrefix(strings.ToLower(info.OriginModelName), "happy-horse-") {
+		if len(req.Images) == 0 && req.Image == "" {
+			return nil, errors.New("HappyHorse reference video requires at least one image")
+		}
+		images := append([]string(nil), req.Images...)
+		if len(images) == 0 {
+			images = append(images, req.Image)
+		}
+		aliReq.Input.ImgURL = ""
+		aliReq.Input.Media = make([]AliVideoMedia, 0, len(images))
+		for _, imageURL := range images {
+			if imageURL != "" {
+				aliReq.Input.Media = append(aliReq.Input.Media, AliVideoMedia{Type: "reference_image", URL: imageURL})
+			}
+		}
+		if !strings.Contains(aliReq.Input.Prompt, "[Image ") {
+			labels := make([]string, 0, len(aliReq.Input.Media))
+			for index := range aliReq.Input.Media {
+				labels = append(labels, fmt.Sprintf("[Image %d]", index+1))
+			}
+			aliReq.Input.Prompt = fmt.Sprintf("参考图顺序：%s。\n%s", strings.Join(labels, "、"), aliReq.Input.Prompt)
+		}
+		aliReq.Parameters.PromptExtend = false
+		if ratio, ok := req.Metadata["ratio"].(string); ok {
+			aliReq.Parameters.Ratio = ratio
+		}
 	}
 
 	return aliReq, nil

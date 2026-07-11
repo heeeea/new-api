@@ -13,6 +13,7 @@ import (
 	"github.com/QuantumNous/new-api/dto"
 	"github.com/QuantumNous/new-api/relay/channel"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
+	relayconstant "github.com/QuantumNous/new-api/relay/constant"
 	"github.com/QuantumNous/new-api/types"
 
 	"github.com/gin-gonic/gin"
@@ -43,13 +44,27 @@ func (a *Adaptor) ConvertAudioRequest(c *gin.Context, info *relaycommon.RelayInf
 }
 
 func (a *Adaptor) ConvertImageRequest(c *gin.Context, info *relaycommon.RelayInfo, request dto.ImageRequest) (any, error) {
-	//TODO implement me
-	return nil, errors.New("not implemented")
+	apiKey := common.GetContextKeyString(c, constant.ContextKeyChannelKey)
+	apiKey = strings.TrimPrefix(apiKey, "Bearer ")
+	appID, secretID, secretKey, err := parseTencentConfig(apiKey)
+	if err != nil {
+		return nil, err
+	}
+	a.AppID = appID
+	tencentRequest := TencentImageRequest{Prompt: request.Prompt}
+	a.Sign, err = getTencentSignForPayload(tencentRequest, a, secretID, secretKey)
+	if err != nil {
+		return nil, err
+	}
+	return tencentRequest, nil
 }
 
 func (a *Adaptor) Init(info *relaycommon.RelayInfo) {
 	a.Action = "ChatCompletions"
 	a.Version = "2023-09-01"
+	if info.RelayMode == relayconstant.RelayModeImagesGenerations {
+		a.Action = "TextToImageLite"
+	}
 	a.Timestamp = common.GetTimestamp()
 }
 
@@ -102,6 +117,9 @@ func (a *Adaptor) DoRequest(c *gin.Context, info *relaycommon.RelayInfo, request
 }
 
 func (a *Adaptor) DoResponse(c *gin.Context, resp *http.Response, info *relaycommon.RelayInfo) (usage any, err *types.NewAPIError) {
+	if info.RelayMode == relayconstant.RelayModeImagesGenerations {
+		return tencentImageHandler(c, resp)
+	}
 	if info.IsStream {
 		usage, err = tencentStreamHandler(c, info, resp)
 	} else {

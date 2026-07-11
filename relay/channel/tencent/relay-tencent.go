@@ -185,6 +185,11 @@ func hmacSha256(s, key string) string {
 }
 
 func getTencentSign(req TencentChatRequest, adaptor *Adaptor, secId, secKey string) string {
+	sign, _ := getTencentSignForPayload(req, adaptor, secId, secKey)
+	return sign
+}
+
+func getTencentSignForPayload(req any, adaptor *Adaptor, secId, secKey string) (string, error) {
 	// build canonical request string
 	host := "hunyuan.tencentcloudapi.com"
 	httpRequestMethod := "POST"
@@ -193,7 +198,10 @@ func getTencentSign(req TencentChatRequest, adaptor *Adaptor, secId, secKey stri
 	canonicalHeaders := fmt.Sprintf("content-type:%s\nhost:%s\nx-tc-action:%s\n",
 		"application/json", host, strings.ToLower(adaptor.Action))
 	signedHeaders := "content-type;host;x-tc-action"
-	payload, _ := json.Marshal(req)
+	payload, err := common.Marshal(req)
+	if err != nil {
+		return "", err
+	}
 	hashedRequestPayload := sha256hex(string(payload))
 	canonicalRequest := fmt.Sprintf("%s\n%s\n%s\n%s\n%s\n%s",
 		httpRequestMethod,
@@ -230,5 +238,40 @@ func getTencentSign(req TencentChatRequest, adaptor *Adaptor, secId, secKey stri
 		credentialScope,
 		signedHeaders,
 		signature)
-	return authorization
+	return authorization, nil
+}
+
+func tencentImageHandler(c *gin.Context, resp *http.Response) (*dto.Usage, *types.NewAPIError) {
+	defer service.CloseResponseBodyGracefully(resp)
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, types.NewOpenAIError(err, types.ErrorCodeReadResponseBodyFailed, http.StatusInternalServerError)
+	}
+	var result TencentImageResponse
+	if err := common.Unmarshal(body, &result); err != nil {
+		return nil, types.NewOpenAIError(err, types.ErrorCodeBadResponseBody, http.StatusBadGateway)
+	}
+	if result.Response.Error != nil {
+		err := errors.New(result.Response.Error.Code + ": " + result.Response.Error.Message)
+		return nil, types.NewOpenAIError(err, types.ErrorCodeBadResponse, resp.StatusCode)
+	}
+	images := make([]dto.ImageData, 0, 1+len(result.Response.ResultImageList))
+	if result.Response.ResultImage != "" {
+		images = append(images, dto.ImageData{Url: result.Response.ResultImage})
+	} else if result.Response.ImageURL != "" {
+		images = append(images, dto.ImageData{Url: result.Response.ImageURL})
+	}
+	for _, imageURL := range result.Response.ResultImageList {
+		if imageURL != "" {
+			images = append(images, dto.ImageData{Url: imageURL})
+		}
+	}
+	if result.Response.ResultImageBase64 != "" {
+		images = append(images, dto.ImageData{B64Json: result.Response.ResultImageBase64})
+	}
+	if len(images) == 0 {
+		return nil, types.NewOpenAIError(errors.New("Tencent Hunyuan did not return an image"), types.ErrorCodeBadResponseBody, http.StatusBadGateway)
+	}
+	c.JSON(resp.StatusCode, dto.ImageResponse{Created: common.GetTimestamp(), Data: images})
+	return &dto.Usage{}, nil
 }

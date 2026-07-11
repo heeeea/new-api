@@ -171,6 +171,34 @@ func TestConvertToAliRequestWan25I2VKeepsLegacyImgURL(t *testing.T) {
 	require.NotContains(t, string(body), `"media"`)
 }
 
+func TestConvertToAliRequestHappyHorseUsesReferenceMedia(t *testing.T) {
+	adaptor := &TaskAdaptor{}
+	info := testRelayInfo()
+	info.OriginModelName = "happy-horse-1.1"
+	info.IsModelMapped = true
+	info.UpstreamModelName = "happyhorse-1.1-r2v"
+	req := relaycommon.TaskSubmitReq{
+		Model:    "happy-horse-1.1",
+		Prompt:   "show the product from several angles",
+		Images:   []string{"https://example.com/product.png", "https://example.com/detail.png"},
+		Duration: 5,
+		Size:     "720p",
+		Metadata: map[string]interface{}{"ratio": "9:16"},
+	}
+
+	aliReq, err := adaptor.convertToAliRequest(info, req)
+
+	require.NoError(t, err)
+	require.Equal(t, "happyhorse-1.1-r2v", aliReq.Model)
+	require.Equal(t, "9:16", aliReq.Parameters.Ratio)
+	require.Contains(t, aliReq.Input.Prompt, "[Image 1]、[Image 2]")
+	require.Equal(t, []AliVideoMedia{
+		{Type: "reference_image", URL: "https://example.com/product.png"},
+		{Type: "reference_image", URL: "https://example.com/detail.png"},
+	}, aliReq.Input.Media)
+	require.Empty(t, aliReq.Input.ImgURL)
+}
+
 func TestProcessAliOtherRatiosPricesWan27AliasesAt1080P(t *testing.T) {
 	for _, modelName := range []string{"wan2.6-i2v-flash", "wan2.6-t2v"} {
 		t.Run(modelName, func(t *testing.T) {
