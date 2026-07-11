@@ -48,6 +48,10 @@ The following channels are intentionally disabled and excluded from the unified 
 | Google Gemini | Gemini 3.1 text/image and Veo 3.1 video | Gemini API key |
 | Runway | `runway-gen-4.5`, `runway-gen-4-turbo` | Runway API key and a custom asynchronous task adapter |
 
+## Local credential file
+
+Missing provider credentials are entered in `/Volumes/Dev_1T/API-zz/new-api-run/provider-keys.env`. The file is local-only with mode `600`. The desktop shortcut `填写 New API 厂商密钥.command` opens it in TextEdit. After saving, double-click `New API 后台管理.command`; the launcher synchronizes non-empty values into channels and restarts New API only when the credential file changed. Empty providers remain disabled and are removed from the unified token model list. Runway remains disabled even when its key is present until its asynchronous adapter is implemented.
+
 ## Compatibility rules added for Yingxiaotai
 
 - Agnes image requests keep provider-specific `extra_body.image` references and move an incompatible top-level `response_format` into `extra_body.response_format`.
