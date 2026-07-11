@@ -38,10 +38,24 @@ func (a *Adaptor) ConvertAudioRequest(c *gin.Context, info *relaycommon.RelayInf
 }
 
 func (a *Adaptor) ConvertImageRequest(c *gin.Context, info *relaycommon.RelayInfo, request dto.ImageRequest) (any, error) {
+	aspectRatio := ""
+	switch request.Size {
+	case "576x1024":
+		aspectRatio = "9:16"
+	case "1024x576":
+		aspectRatio = "16:9"
+	case "768x1024":
+		aspectRatio = "3:4"
+	case "1024x768":
+		aspectRatio = "4:3"
+	case "1024x1024":
+		aspectRatio = "1:1"
+	}
 	xaiRequest := ImageRequest{
 		Model:          request.Model,
 		Prompt:         request.Prompt,
 		N:              int(lo.FromPtrOr(request.N, uint(1))),
+		AspectRatio:    aspectRatio,
 		ResponseFormat: request.ResponseFormat,
 	}
 	return xaiRequest, nil
