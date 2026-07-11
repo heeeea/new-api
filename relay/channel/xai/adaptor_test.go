@@ -1,6 +1,7 @@
 package xai
 
 import (
+	"encoding/json"
 	"net/http/httptest"
 	"testing"
 
@@ -29,4 +30,31 @@ func TestConvertImageRequestMapsPortraitSizeToAspectRatio(t *testing.T) {
 	request, ok := converted.(ImageRequest)
 	require.True(t, ok)
 	assert.Equal(t, "9:16", request.AspectRatio)
+}
+
+func TestConvertImageEditPreservesExtendedRatioResolutionAndReferences(t *testing.T) {
+	t.Parallel()
+
+	converted, err := (&Adaptor{}).ConvertImageRequest(
+		gin.CreateTestContextOnly(httptest.NewRecorder(), gin.New()),
+		&relaycommon.RelayInfo{},
+		dto.ImageRequest{
+			Model:       "grok-imagine-image-quality",
+			Prompt:      "put the product on the model",
+			Quality:     "high",
+			AspectRatio: "20:9",
+			Images:      json.RawMessage(`[{"type":"image_url","url":"data:image/png;base64,AAAA"},{"type":"image_url","url":"https://cdn.example/product.png"}]`),
+		},
+	)
+	require.NoError(t, err)
+
+	request, ok := converted.(ImageRequest)
+	require.True(t, ok)
+	assert.Equal(t, "20:9", request.AspectRatio)
+	assert.Equal(t, "2k", request.Resolution)
+	assert.Nil(t, request.Image)
+	assert.Equal(t, []ImageReference{
+		{Type: "image_url", URL: "data:image/png;base64,AAAA"},
+		{Type: "image_url", URL: "https://cdn.example/product.png"},
+	}, request.Images)
 }

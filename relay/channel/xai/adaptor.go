@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/dto"
 	"github.com/QuantumNous/new-api/relay/channel"
 	"github.com/QuantumNous/new-api/relay/channel/openai"
@@ -51,12 +52,44 @@ func (a *Adaptor) ConvertImageRequest(c *gin.Context, info *relaycommon.RelayInf
 	case "1024x1024":
 		aspectRatio = "1:1"
 	}
+	if request.AspectRatio != "" {
+		aspectRatio = request.AspectRatio
+	} else if raw, ok := request.Extra["aspect_ratio"]; ok {
+		_ = common.Unmarshal(raw, &aspectRatio)
+	}
+	resolution := request.Resolution
+	if resolution == "" {
+		if raw, ok := request.Extra["resolution"]; ok {
+			_ = common.Unmarshal(raw, &resolution)
+		}
+	}
+	if resolution == "" && strings.EqualFold(request.Quality, "high") {
+		resolution = "2k"
+	}
 	xaiRequest := ImageRequest{
 		Model:          request.Model,
 		Prompt:         request.Prompt,
 		N:              int(lo.FromPtrOr(request.N, uint(1))),
 		AspectRatio:    aspectRatio,
+		Resolution:     strings.ToLower(strings.TrimSpace(resolution)),
 		ResponseFormat: request.ResponseFormat,
+	}
+	if len(request.Images) > 0 {
+		var images []ImageReference
+		if err := common.Unmarshal(request.Images, &images); err != nil {
+			return nil, err
+		}
+		if len(images) == 1 {
+			xaiRequest.Image = &images[0]
+		} else {
+			xaiRequest.Images = images
+		}
+	} else if len(request.Image) > 0 {
+		var image ImageReference
+		if err := common.Unmarshal(request.Image, &image); err != nil {
+			return nil, err
+		}
+		xaiRequest.Image = &image
 	}
 	return xaiRequest, nil
 }

@@ -55,3 +55,66 @@ func TestBuildTencentMPSRequestBody(t *testing.T) {
 	require.Equal(t, "q3-turbo", payload["ModelVersion"])
 	require.Equal(t, "https://cdn.example/input.png", payload["ImageUrl"])
 }
+
+func TestBuildTencentMPSReferenceRequestPreservesImagesAndVideo(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	a := &TaskAdaptor{}
+	task := relaycommon.TaskSubmitReq{
+		Model:    "kling-omni",
+		Prompt:   "keep the product identity",
+		Duration: 8,
+		Images:   []string{"https://cdn.example/model.png", "https://cdn.example/product.png"},
+		Metadata: map[string]any{
+			"mode":           "all_reference",
+			"ratio":          "9:16",
+			"generate_audio": true,
+			"content": []any{
+				map[string]any{"type": "image_url", "role": "reference_image", "image_url": map[string]any{"url": "https://cdn.example/model.png"}},
+				map[string]any{"type": "image_url", "role": "reference_image", "image_url": map[string]any{"url": "https://cdn.example/product.png"}},
+				map[string]any{"type": "video_url", "role": "reference_video", "video_url": map[string]any{"url": "https://cdn.example/reference.mp4"}},
+			},
+		},
+	}
+	c, _ := gin.CreateTestContext(httptest.NewRecorder())
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/videos", nil)
+	c.Set("task_request", task)
+	info := &relaycommon.RelayInfo{OriginModelName: "kling-omni"}
+	reader, err := a.BuildRequestBody(c, info)
+	require.NoError(t, err)
+	body, err := io.ReadAll(reader)
+	require.NoError(t, err)
+	var payload map[string]any
+	require.NoError(t, appcommon.Unmarshal(body, &payload))
+	require.NotContains(t, payload, "ImageUrl")
+	require.NotContains(t, payload, "LastImageUrl")
+	require.Equal(t, []any{
+		map[string]any{"ImageUrl": "https://cdn.example/model.png"},
+		map[string]any{"ImageUrl": "https://cdn.example/product.png"},
+	}, payload["ImageInfos"])
+	require.Equal(t, []any{
+		map[string]any{"VideoUrl": "https://cdn.example/reference.mp4", "ReferType": "feature", "KeepOriginalSound": "yes"},
+	}, payload["VideoInfos"])
+}
+
+func TestBuildTencentMPSOmitsUnsupportedAspectRatio(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	for _, modelName := range []string{"hailuo-2.3-fast", "kling-3.0"} {
+		t.Run(modelName, func(t *testing.T) {
+			a := &TaskAdaptor{}
+			c, _ := gin.CreateTestContext(httptest.NewRecorder())
+			c.Request = httptest.NewRequest(http.MethodPost, "/v1/videos", nil)
+			c.Set("task_request", relaycommon.TaskSubmitReq{
+				Model: modelName, Prompt: "animate product", Images: []string{"https://cdn.example/input.png"},
+				Metadata: map[string]any{"mode": "image_to_video", "ratio": "9:16"},
+			})
+			reader, err := a.BuildRequestBody(c, &relaycommon.RelayInfo{OriginModelName: modelName})
+			require.NoError(t, err)
+			body, err := io.ReadAll(reader)
+			require.NoError(t, err)
+			var payload map[string]any
+			require.NoError(t, appcommon.Unmarshal(body, &payload))
+			extra := payload["ExtraParameters"].(map[string]any)
+			require.NotContains(t, extra, "AspectRatio")
+		})
+	}
+}

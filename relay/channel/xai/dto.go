@@ -14,13 +14,21 @@ type ChatCompletionResponse struct {
 }
 
 type ImageRequest struct {
-	Model          string `json:"model"`
-	Prompt         string `json:"prompt" binding:"required"`
-	N              int    `json:"n,omitempty"`
-	AspectRatio    string `json:"aspect_ratio,omitempty"`
-	ResponseFormat string `json:"response_format,omitempty"`
+	Model          string           `json:"model"`
+	Prompt         string           `json:"prompt" binding:"required"`
+	N              int              `json:"n,omitempty"`
+	AspectRatio    string           `json:"aspect_ratio,omitempty"`
+	Resolution     string           `json:"resolution,omitempty"`
+	ResponseFormat string           `json:"response_format,omitempty"`
+	Image          *ImageReference  `json:"image,omitempty"`
+	Images         []ImageReference `json:"images,omitempty"`
 	// Quality        string          `json:"quality,omitempty"`
 	// Style          string          `json:"style,omitempty"`
 	// User           string          `json:"user,omitempty"`
 	// ExtraFields    json.RawMessage `json:"extra_fields,omitempty"`
+}
+
+type ImageReference struct {
+	Type string `json:"type,omitempty"`
+	URL  string `json:"url"`
 }

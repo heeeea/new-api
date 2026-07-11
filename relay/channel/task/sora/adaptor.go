@@ -40,6 +40,7 @@ type ImageURL struct {
 
 type responseTask struct {
 	ID                 string `json:"id"`
+	RequestID          string `json:"request_id,omitempty"`
 	TaskID             string `json:"task_id,omitempty"` //兼容旧接口
 	Object             string `json:"object"`
 	Model              string `json:"model"`
@@ -55,6 +56,24 @@ type responseTask struct {
 		Message string `json:"message"`
 		Code    string `json:"code"`
 	} `json:"error,omitempty"`
+	Video *struct {
+		URL      string `json:"url"`
+		Duration int    `json:"duration,omitempty"`
+	} `json:"video,omitempty"`
+}
+
+type xAIVideoReference struct {
+	URL string `json:"url"`
+}
+
+type xAIVideoRequest struct {
+	Model           string              `json:"model"`
+	Prompt          string              `json:"prompt"`
+	Duration        int                 `json:"duration,omitempty"`
+	AspectRatio     string              `json:"aspect_ratio,omitempty"`
+	Resolution      string              `json:"resolution,omitempty"`
+	Image           *xAIVideoReference  `json:"image,omitempty"`
+	ReferenceImages []xAIVideoReference `json:"reference_images,omitempty"`
 }
 
 // ============================
@@ -130,6 +149,9 @@ func (a *TaskAdaptor) EstimateBilling(c *gin.Context, info *relaycommon.RelayInf
 }
 
 func (a *TaskAdaptor) BuildRequestURL(info *relaycommon.RelayInfo) (string, error) {
+	if a.ChannelType == constant.ChannelTypeXai {
+		return fmt.Sprintf("%s/v1/videos/generations", a.baseURL), nil
+	}
 	if info.Action == constant.TaskActionRemix {
 		return fmt.Sprintf("%s/v1/videos/%s/remix", a.baseURL, info.OriginTaskID), nil
 	}
@@ -144,6 +166,45 @@ func (a *TaskAdaptor) BuildRequestHeader(c *gin.Context, req *http.Request, info
 }
 
 func (a *TaskAdaptor) BuildRequestBody(c *gin.Context, info *relaycommon.RelayInfo) (io.Reader, error) {
+	if a.ChannelType == constant.ChannelTypeXai {
+		req, err := relaycommon.GetTaskRequest(c)
+		if err != nil {
+			return nil, err
+		}
+		mode := strings.TrimSpace(req.Mode)
+		aspectRatio := ""
+		resolution := strings.ToLower(strings.TrimSpace(req.Size))
+		if req.Metadata != nil {
+			if value, ok := req.Metadata["mode"].(string); ok && mode == "" {
+				mode = strings.TrimSpace(value)
+			}
+			if value, ok := req.Metadata["ratio"].(string); ok {
+				aspectRatio = strings.TrimSpace(value)
+			}
+			if value, ok := req.Metadata["resolution"].(string); ok {
+				resolution = strings.ToLower(strings.TrimSpace(value))
+			}
+		}
+		xaiReq := xAIVideoRequest{
+			Model:       info.UpstreamModelName,
+			Prompt:      req.Prompt,
+			Duration:    req.Duration,
+			AspectRatio: aspectRatio,
+			Resolution:  resolution,
+		}
+		if mode == "image_reference" {
+			for _, image := range req.Images {
+				xaiReq.ReferenceImages = append(xaiReq.ReferenceImages, xAIVideoReference{URL: image})
+			}
+		} else if len(req.Images) > 0 {
+			xaiReq.Image = &xAIVideoReference{URL: req.Images[0]}
+		}
+		body, err := common.Marshal(xaiReq)
+		if err != nil {
+			return nil, err
+		}
+		return bytes.NewReader(body), nil
+	}
 	storage, err := common.GetBodyStorage(c)
 	if err != nil {
 		return nil, errors.Wrap(err, "get_request_body_failed")
@@ -240,7 +301,10 @@ func (a *TaskAdaptor) DoResponse(c *gin.Context, resp *http.Response, info *rela
 		return
 	}
 
-	upstreamID := dResp.ID
+	upstreamID := dResp.RequestID
+	if upstreamID == "" {
+		upstreamID = dResp.ID
+	}
 	if upstreamID == "" {
 		upstreamID = dResp.TaskID
 	}
@@ -250,8 +314,13 @@ func (a *TaskAdaptor) DoResponse(c *gin.Context, resp *http.Response, info *rela
 	}
 
 	// 使用公开 task_xxxx ID 返回给客户端
+	dResp.RequestID = ""
 	dResp.ID = info.PublicTaskID
 	dResp.TaskID = info.PublicTaskID
+	if a.ChannelType == constant.ChannelTypeXai && dResp.Status == "" {
+		dResp.Object = "video"
+		dResp.Status = dto.VideoStatusQueued
+	}
 	c.JSON(http.StatusOK, dResp)
 	return upstreamID, responseBody, nil
 }
@@ -302,10 +371,12 @@ func (a *TaskAdaptor) ParseTaskResult(respBody []byte) (*relaycommon.TaskInfo, e
 		taskResult.Status = model.TaskStatusQueued
 	case "processing", "in_progress":
 		taskResult.Status = model.TaskStatusInProgress
-	case "completed":
+	case "completed", "done":
 		taskResult.Status = model.TaskStatusSuccess
-		// Url intentionally left empty — the caller constructs the proxy URL using the public task ID
-	case "failed", "cancelled":
+		if resTask.Video != nil {
+			taskResult.Url = resTask.Video.URL
+		}
+	case "failed", "cancelled", "expired":
 		taskResult.Status = model.TaskStatusFailure
 		if resTask.Error != nil {
 			taskResult.Reason = resTask.Error.Message
@@ -322,6 +393,26 @@ func (a *TaskAdaptor) ParseTaskResult(respBody []byte) (*relaycommon.TaskInfo, e
 }
 
 func (a *TaskAdaptor) ConvertToOpenAIVideo(task *model.Task) ([]byte, error) {
+	if string(task.Platform) == strconv.Itoa(constant.ChannelTypeXai) {
+		video := dto.NewOpenAIVideo()
+		video.ID = task.TaskID
+		video.Model = task.Properties.UpstreamModelName
+		switch task.Status {
+		case model.TaskStatusSuccess:
+			video.Status = dto.VideoStatusCompleted
+		case model.TaskStatusFailure:
+			video.Status = dto.VideoStatusFailed
+			video.Error = &dto.OpenAIVideoError{Message: task.FailReason, Code: "provider_failed"}
+		case model.TaskStatusInProgress:
+			video.Status = dto.VideoStatusInProgress
+		default:
+			video.Status = dto.VideoStatusQueued
+		}
+		if task.PrivateData.ResultURL != "" {
+			video.SetMetadata("url", task.PrivateData.ResultURL)
+		}
+		return common.Marshal(video)
+	}
 	data := task.Data
 	var err error
 	if data, err = sjson.SetBytes(data, "id", task.TaskID); err != nil {

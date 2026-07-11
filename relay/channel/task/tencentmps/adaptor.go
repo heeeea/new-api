@@ -124,30 +124,84 @@ func (a *TaskAdaptor) BuildRequestBody(c *gin.Context, info *relaycommon.RelayIn
 	if value, ok := req.Metadata["ratio"].(string); ok && value != "" {
 		ratio = value
 	}
+	mode, _ := req.Metadata["mode"].(string)
+	hasImages := len(req.Images) > 0 || req.Image != ""
+	extraParameters := map[string]any{
+		"Resolution": resolution,
+		"LogoAdd":    0,
+	}
+	includeRatio := ratio != "" && ratio != "auto"
+	switch strings.ToLower(modelName) {
+	case "hailuo", "hunyuan":
+		includeRatio = false
+	case "kling":
+		includeRatio = includeRatio && !hasImages
+	case "vidu", "pixverse":
+		includeRatio = includeRatio && (!hasImages || mode == "image_reference" || mode == "all_reference")
+	}
+	if includeRatio {
+		extraParameters["AspectRatio"] = ratio
+	}
 	payload := map[string]any{
-		"ModelName":     modelName,
-		"ModelVersion":  modelVersion,
-		"Prompt":        req.Prompt,
-		"Duration":      duration,
-		"EnhancePrompt": false,
-		"ExtraParameters": map[string]any{
-			"Resolution":  resolution,
-			"AspectRatio": ratio,
-			"LogoAdd":     0,
-		},
-		"Operator": "yingxiaotai-new-api",
+		"ModelName":       modelName,
+		"ModelVersion":    modelVersion,
+		"Prompt":          req.Prompt,
+		"Duration":        duration,
+		"EnhancePrompt":   false,
+		"ExtraParameters": extraParameters,
+		"Operator":        "yingxiaotai-new-api",
 	}
 	images := append([]string(nil), req.Images...)
 	if len(images) == 0 && req.Image != "" {
 		images = append(images, req.Image)
 	}
-	if len(images) > 0 {
-		payload["ImageUrl"] = images[0]
+	generateAudio, _ := req.Metadata["generate_audio"].(bool)
+	videoInfos := make([]map[string]any, 0)
+	if content, ok := req.Metadata["content"].([]any); ok {
+		for _, item := range content {
+			part, ok := item.(map[string]any)
+			if !ok || part["type"] != "video_url" {
+				continue
+			}
+			video, ok := part["video_url"].(map[string]any)
+			if !ok {
+				continue
+			}
+			videoURL, _ := video["url"].(string)
+			if videoURL == "" {
+				continue
+			}
+			keepSound := "no"
+			if generateAudio {
+				keepSound = "yes"
+			}
+			videoInfos = append(videoInfos, map[string]any{"VideoUrl": videoURL, "ReferType": "feature", "KeepOriginalSound": keepSound})
+		}
 	}
-	if len(images) > 1 && supportsLastFrame(modelName) {
-		payload["LastImageUrl"] = images[1]
+	if len(videoInfos) > 0 {
+		payload["VideoInfos"] = videoInfos
 	}
-	if enabled, ok := req.Metadata["generate_audio"].(bool); ok && enabled {
+	if mode == "image_reference" || mode == "all_reference" {
+		limit := 7
+		if len(videoInfos) > 0 && strings.EqualFold(modelName, "Kling") {
+			limit = 4
+		}
+		imageInfos := make([]map[string]any, 0, min(len(images), limit))
+		for _, image := range images[:min(len(images), limit)] {
+			imageInfos = append(imageInfos, map[string]any{"ImageUrl": image})
+		}
+		if len(imageInfos) > 0 {
+			payload["ImageInfos"] = imageInfos
+		}
+	} else {
+		if len(images) > 0 {
+			payload["ImageUrl"] = images[0]
+		}
+		if len(images) > 1 && supportsLastFrame(modelName) {
+			payload["LastImageUrl"] = images[1]
+		}
+	}
+	if generateAudio {
 		payload["ExtraParameters"].(map[string]any)["EnableAudio"] = true
 	}
 	body, err := common.Marshal(payload)
