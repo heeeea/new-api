@@ -51,7 +51,16 @@ func (a *Adaptor) ConvertImageRequest(c *gin.Context, info *relaycommon.RelayInf
 		return nil, err
 	}
 	a.AppID = appID
-	tencentRequest := TencentImageRequest{Prompt: request.Prompt}
+	resolution := strings.ReplaceAll(strings.ToLower(strings.TrimSpace(request.Size)), "x", ":")
+	allowedResolutions := map[string]bool{
+		"768:768": true, "768:1024": true, "1024:768": true, "1024:1024": true,
+		"720:1280": true, "1280:720": true, "768:1280": true, "1280:768": true,
+		"1080:1920": true, "1920:1080": true,
+	}
+	if !allowedResolutions[resolution] {
+		resolution = ""
+	}
+	tencentRequest := TencentImageRequest{Prompt: request.Prompt, Resolution: resolution, LogoAdd: 0}
 	a.Sign, err = getTencentSignForPayload(tencentRequest, a, secretID, secretKey)
 	if err != nil {
 		return nil, err

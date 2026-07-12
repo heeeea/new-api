@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"path/filepath"
+	"strconv"
 	"strings"
 
 	channelconstant "github.com/QuantumNous/new-api/constant"
@@ -108,6 +109,17 @@ func (a *Adaptor) ConvertAudioRequest(c *gin.Context, info *relaycommon.RelayInf
 func (a *Adaptor) ConvertImageRequest(c *gin.Context, info *relaycommon.RelayInfo, request dto.ImageRequest) (any, error) {
 	switch info.RelayMode {
 	case constant.RelayModeImagesGenerations:
+		if info.OriginModelName == "seedream-5-0-pro" || request.Model == "seedream-5-0-pro" {
+			outputPrice := 0.30
+			if seedreamLargeImageSize(request.Size, request.Resolution) {
+				outputPrice = 0.60
+			}
+			inputImages := rawImageCount(request.Images) + rawImageCount(request.Image)
+			priceRatio := (outputPrice + float64(inputImages)*0.02) / 0.30
+			if priceRatio != 1 {
+				info.PriceData.AddOtherRatio("seedream5_image_price", priceRatio)
+			}
+		}
 		return request, nil
 	// 根据官方文档,并没有发现豆包生图支持表单请求:https://www.volcengine.com/docs/82379/1824121
 	//case constant.RelayModeImagesEdits:
@@ -214,6 +226,30 @@ func (a *Adaptor) ConvertImageRequest(c *gin.Context, info *relaycommon.RelayInf
 	default:
 		return request, nil
 	}
+}
+
+func rawImageCount(raw json.RawMessage) int {
+	if len(raw) == 0 || string(raw) == "null" {
+		return 0
+	}
+	var values []json.RawMessage
+	if json.Unmarshal(raw, &values) == nil {
+		return len(values)
+	}
+	return 1
+}
+
+func seedreamLargeImageSize(size, resolution string) bool {
+	if strings.EqualFold(strings.TrimSpace(resolution), "2k") {
+		return true
+	}
+	parts := strings.SplitN(strings.ToLower(strings.TrimSpace(size)), "x", 2)
+	if len(parts) != 2 {
+		return false
+	}
+	width, _ := strconv.Atoi(parts[0])
+	height, _ := strconv.Atoi(parts[1])
+	return width*height > 2_000_000
 }
 
 func detectImageMimeType(filename string) string {

@@ -214,3 +214,39 @@ func TestProcessAliOtherRatiosPricesWan27AliasesAt1080P(t *testing.T) {
 		})
 	}
 }
+
+func TestProcessAliOtherRatiosPricesMappedWan27ModelsAt1080P(t *testing.T) {
+	for _, modelName := range []string{"wan2.7-i2v-2026-04-25", "wan2.7-t2v-2026-06-12"} {
+		t.Run(modelName, func(t *testing.T) {
+			ratios, err := ProcessAliOtherRatios(&AliVideoRequest{
+				Model: modelName,
+				Parameters: &AliVideoParameters{
+					Resolution: "1080P",
+				},
+			})
+
+			require.NoError(t, err)
+			require.InDelta(t, 1.0/0.6, ratios["resolution-1080P"], 0.000001)
+		})
+	}
+}
+
+func TestProcessAliOtherRatiosPricesHappyHorseAt1080P(t *testing.T) {
+	tests := map[string]float64{
+		"happyhorse-1.1-r2v": 0.165026 / 0.123769,
+		"happyhorse-1.0-r2v": 0.220034 / 0.123769,
+	}
+	for modelName, want := range tests {
+		t.Run(modelName, func(t *testing.T) {
+			ratios, err := ProcessAliOtherRatios(&AliVideoRequest{
+				Model: modelName,
+				Parameters: &AliVideoParameters{
+					Resolution: "1080P",
+				},
+			})
+
+			require.NoError(t, err)
+			require.InDelta(t, want, ratios["resolution-1080P"], 0.000001)
+		})
+	}
+}

@@ -84,7 +84,84 @@ func (a *TaskAdaptor) EstimateBilling(c *gin.Context, info *relaycommon.RelayInf
 	if duration <= 0 {
 		duration = 5
 	}
-	return map[string]float64{"seconds": float64(duration)}
+	ratios := map[string]float64{"seconds": float64(duration)}
+	resolution := strings.ToLower(strings.TrimSpace(req.Size))
+	if value, ok := req.Metadata["resolution"].(string); ok && value != "" {
+		resolution = strings.ToLower(strings.TrimSpace(value))
+	}
+	generateAudio, _ := req.Metadata["generate_audio"].(bool)
+	if ratio, ok := tencentMPSVideoPriceRatio(info.OriginModelName, resolution, generateAudio, hasReferenceVideo(req.Metadata)); ok {
+		ratios["mps_video_price"] = ratio
+	}
+	return ratios
+}
+
+func hasReferenceVideo(metadata map[string]any) bool {
+	content, _ := metadata["content"].([]any)
+	for _, item := range content {
+		part, _ := item.(map[string]any)
+		if part["type"] == "video_url" {
+			return true
+		}
+	}
+	return false
+}
+
+func tencentMPSVideoPriceRatio(modelName, resolution string, audio, referenceVideo bool) (float64, bool) {
+	modelName = strings.ToLower(strings.TrimSpace(modelName))
+	resolution = strings.ToLower(strings.TrimSpace(resolution))
+	prices := map[string]float64{}
+	base := 0.0
+	switch modelName {
+	case "kling-3.0":
+		base = 0.6
+		if audio {
+			prices = map[string]float64{"720p": 0.9, "1080p": 1.2, "2k": 1.5, "4k": 2}
+		} else {
+			prices = map[string]float64{"720p": 0.6, "1080p": 0.8, "2k": 1, "4k": 1.2}
+		}
+	case "kling-omni":
+		base = 0.6
+		switch {
+		case referenceVideo && audio:
+			prices = map[string]float64{"720p": 1.1, "1080p": 1.4, "2k": 1.8, "4k": 2.4}
+		case referenceVideo:
+			prices = map[string]float64{"720p": 0.9, "1080p": 1.2, "2k": 1.5, "4k": 2}
+		case audio:
+			prices = map[string]float64{"720p": 0.8, "1080p": 1, "2k": 1.2, "4k": 1.5}
+		default:
+			prices = map[string]float64{"720p": 0.6, "1080p": 0.8, "2k": 1, "4k": 1.2}
+		}
+	case "kling-o1":
+		base = 0.9
+		prices = map[string]float64{"720p": 0.9, "1080p": 1.2, "2k": 1.8, "4k": 2.7}
+	case "hailuo-2.3-fast":
+		base = 0.225
+		prices = map[string]float64{"768p": 0.225, "1080p": 0.385, "2k": 0.58, "4k": 0.87}
+	case "hunyuan-video":
+		base = 0.3
+		prices = map[string]float64{"720p": 0.3, "1080p": 0.5, "2k": 0.75, "4k": 1.12}
+	case "viduq3-turbo":
+		base = 0.38
+		prices = map[string]float64{"720p": 0.38, "1080p": 0.5, "2k": 0.75, "4k": 1.125}
+	case "viduq3-pro":
+		base = 0.9375
+		prices = map[string]float64{"540p": 0.44, "720p": 0.9375, "1080p": 1, "2k": 1.2, "4k": 1.44}
+	case "pixverse-v6":
+		base = 0.264
+		if audio {
+			prices = map[string]float64{"540p": 0.352, "720p": 0.352, "1080p": 0.6746, "2k": 0.8095, "4k": 0.9714}
+		} else {
+			prices = map[string]float64{"540p": 0.264, "720p": 0.264, "1080p": 0.5279, "2k": 0.6335, "4k": 0.7602}
+		}
+	default:
+		return 0, false
+	}
+	price, ok := prices[resolution]
+	if !ok || base <= 0 {
+		return 0, false
+	}
+	return price / base, true
 }
 
 func (a *TaskAdaptor) BuildRequestURL(_ *relaycommon.RelayInfo) (string, error) {

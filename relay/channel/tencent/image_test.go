@@ -25,10 +25,10 @@ func TestConvertTencentImageRequestSignsTextToImageLite(t *testing.T) {
 	adaptor := &Adaptor{}
 	adaptor.Init(info)
 
-	converted, err := adaptor.ConvertImageRequest(c, info, dto.ImageRequest{Model: "hunyuan-image", Prompt: "product photo"})
+	converted, err := adaptor.ConvertImageRequest(c, info, dto.ImageRequest{Model: "hunyuan-image", Prompt: "product photo", Size: "1920x1080"})
 
 	require.NoError(t, err)
-	require.Equal(t, TencentImageRequest{Prompt: "product photo"}, converted)
+	require.Equal(t, TencentImageRequest{Prompt: "product photo", Resolution: "1920:1080", LogoAdd: 0}, converted)
 	require.Equal(t, "TextToImageLite", adaptor.Action)
 	require.Contains(t, adaptor.Sign, "Credential=secret-id/")
 }

@@ -74,6 +74,7 @@ func (a *Adaptor) ConvertImageRequest(c *gin.Context, info *relaycommon.RelayInf
 		Resolution:     strings.ToLower(strings.TrimSpace(resolution)),
 		ResponseFormat: request.ResponseFormat,
 	}
+	inputImages := 0
 	if len(request.Images) > 0 {
 		var images []ImageReference
 		if err := common.Unmarshal(request.Images, &images); err != nil {
@@ -84,12 +85,25 @@ func (a *Adaptor) ConvertImageRequest(c *gin.Context, info *relaycommon.RelayInf
 		} else {
 			xaiRequest.Images = images
 		}
+		inputImages = len(images)
 	} else if len(request.Image) > 0 {
 		var image ImageReference
 		if err := common.Unmarshal(request.Image, &image); err != nil {
 			return nil, err
 		}
 		xaiRequest.Image = &image
+		inputImages = 1
+	}
+	baseOutputPrice, outputPrice, inputPrice := 0.02, 0.02, 0.002
+	if request.Model == "grok-imagine-image-quality" {
+		baseOutputPrice, outputPrice, inputPrice = 0.05, 0.05, 0.01
+		if xaiRequest.Resolution == "2k" {
+			outputPrice = 0.07
+		}
+	}
+	priceRatio := (outputPrice + float64(inputImages)*inputPrice) / baseOutputPrice
+	if priceRatio != 1 {
+		info.PriceData.AddOtherRatio("xai_image_price", priceRatio)
 	}
 	return xaiRequest, nil
 }

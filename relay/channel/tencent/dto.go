@@ -1,7 +1,9 @@
 package tencent
 
 type TencentImageRequest struct {
-	Prompt string `json:"Prompt"`
+	Prompt     string `json:"Prompt"`
+	Resolution string `json:"Resolution,omitempty"`
+	LogoAdd    int    `json:"LogoAdd"`
 }
 
 type TencentImageResponse struct {

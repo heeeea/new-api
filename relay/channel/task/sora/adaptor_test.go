@@ -94,3 +94,28 @@ func TestXAIResponseAndPollingUseRequestIDAndNestedVideoURL(t *testing.T) {
 	require.Equal(t, "completed", video["status"])
 	require.Equal(t, map[string]any{"url": "https://vidgen.x.ai/result.mp4"}, video["metadata"])
 }
+
+func TestXAIEstimateBillingUsesOfficialResolutionAndImageInputPrices(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	a := &TaskAdaptor{}
+	a.Init(&relaycommon.RelayInfo{
+		ChannelMeta: &relaycommon.ChannelMeta{ChannelType: constant.ChannelTypeXai},
+	})
+	c, _ := gin.CreateTestContext(httptest.NewRecorder())
+	c.Set("task_request", relaycommon.TaskSubmitReq{
+		Model:    "grok-imagine-video-1.5",
+		Duration: 8,
+		Images:   []string{"https://cdn.example/product.png"},
+		Metadata: map[string]any{"resolution": "1080p"},
+	})
+	info := &relaycommon.RelayInfo{
+		ChannelMeta:   &relaycommon.ChannelMeta{ChannelType: constant.ChannelTypeXai, UpstreamModelName: "grok-imagine-video-1.5"},
+		TaskRelayInfo: &relaycommon.TaskRelayInfo{},
+	}
+
+	ratios := a.EstimateBilling(c, info)
+	require.Equal(t, float64(8), ratios["seconds"])
+	// Official xAI cost: 8 * $0.25 output + $0.01 image input,
+	// relative to 8 * $0.08 at the configured 480p base rate.
+	require.InDelta(t, 2.01/0.64, ratios["xai_video_price"], 0.000001)
+}

@@ -214,6 +214,22 @@ func ProcessAliOtherRatios(aliReq *AliVideoRequest) (map[string]float64, error) 
 			"720P":  1,
 			"1080P": 1 / 0.6,
 		},
+		"wan2.7-i2v-2026-04-25": {
+			"720P":  1,
+			"1080P": 1 / 0.6,
+		},
+		"wan2.7-t2v-2026-06-12": {
+			"720P":  1,
+			"1080P": 1 / 0.6,
+		},
+		"happyhorse-1.1-r2v": {
+			"720P":  1,
+			"1080P": 0.165026 / 0.123769,
+		},
+		"happyhorse-1.0-r2v": {
+			"720P":  1,
+			"1080P": 0.220034 / 0.123769,
+		},
 		"wan2.5-t2v-preview": {
 			"480P":  1,
 			"720P":  2,

@@ -118,3 +118,39 @@ func TestBuildTencentMPSOmitsUnsupportedAspectRatio(t *testing.T) {
 		})
 	}
 }
+
+func TestEstimateBillingUsesOfficialTencentMPSVideoPriceDimensions(t *testing.T) {
+	tests := []struct {
+		name       string
+		model      string
+		resolution string
+		audio      bool
+		content    []any
+		wantRatio  float64
+	}{
+		{name: "kling3 1080p audio", model: "kling-3.0", resolution: "1080p", audio: true, wantRatio: 1.2 / 0.6},
+		{name: "kling omni 1080p reference video audio", model: "kling-omni", resolution: "1080p", audio: true, content: []any{map[string]any{"type": "video_url"}}, wantRatio: 1.4 / 0.6},
+		{name: "kling o1 1080p", model: "kling-o1", resolution: "1080p", wantRatio: 1.2 / 0.9},
+		{name: "hailuo fast 1080p", model: "hailuo-2.3-fast", resolution: "1080p", wantRatio: 0.385 / 0.225},
+		{name: "hunyuan 1080p", model: "hunyuan-video", resolution: "1080p", wantRatio: 0.5 / 0.3},
+		{name: "vidu q3 pro 1080p", model: "viduq3-pro", resolution: "1080p", wantRatio: 1.0 / 0.9375},
+		{name: "vidu q3 turbo 4k", model: "viduq3-turbo", resolution: "4k", wantRatio: 1.125 / 0.38},
+		{name: "kling3 4k audio", model: "kling-3.0", resolution: "4k", audio: true, wantRatio: 2.0 / 0.6},
+		{name: "kling o1 4k", model: "kling-o1", resolution: "4k", wantRatio: 2.7 / 0.9},
+		{name: "hunyuan 4k", model: "hunyuan-video", resolution: "4k", wantRatio: 1.12 / 0.3},
+		{name: "pixverse 1080p audio", model: "pixverse-v6", resolution: "1080p", audio: true, wantRatio: 0.6746 / 0.264},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			c, _ := gin.CreateTestContext(httptest.NewRecorder())
+			c.Set("task_request", relaycommon.TaskSubmitReq{
+				Model: test.model, Duration: 5, Size: test.resolution,
+				Metadata: map[string]any{"resolution": test.resolution, "generate_audio": test.audio, "content": test.content},
+			})
+			info := &relaycommon.RelayInfo{OriginModelName: test.model, TaskRelayInfo: &relaycommon.TaskRelayInfo{}}
+			ratios := (&TaskAdaptor{}).EstimateBilling(c, info)
+			require.Equal(t, float64(5), ratios["seconds"])
+			require.InDelta(t, test.wantRatio, ratios["mps_video_price"], 0.000001)
+		})
+	}
+}

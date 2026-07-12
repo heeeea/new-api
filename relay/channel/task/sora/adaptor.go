@@ -132,6 +132,28 @@ func (a *TaskAdaptor) EstimateBilling(c *gin.Context, info *relaycommon.RelayInf
 	if seconds <= 0 {
 		seconds = 4
 	}
+	if a.ChannelType == constant.ChannelTypeXai {
+		resolution := strings.ToLower(strings.TrimSpace(req.Size))
+		if value, ok := req.Metadata["resolution"].(string); ok && value != "" {
+			resolution = strings.ToLower(strings.TrimSpace(value))
+		}
+		baseRate, outputRate, imageInputPrice := 0.05, 0.05, 0.002
+		if strings.Contains(info.UpstreamModelName, "1.5") {
+			baseRate, outputRate, imageInputPrice = 0.08, 0.08, 0.01
+			if resolution == "720p" {
+				outputRate = 0.14
+			} else if resolution == "1080p" {
+				outputRate = 0.25
+			}
+		} else if resolution == "720p" {
+			outputRate = 0.07
+		}
+		priceRatio := (outputRate*float64(seconds) + imageInputPrice*float64(len(req.Images))) / (baseRate * float64(seconds))
+		return map[string]float64{
+			"seconds":         float64(seconds),
+			"xai_video_price": priceRatio,
+		}
+	}
 
 	size := req.Size
 	if size == "" {
