@@ -20,6 +20,8 @@ type MiniMaxImageRequest struct {
 	Model           string `json:"model"`
 	Prompt          string `json:"prompt"`
 	AspectRatio     string `json:"aspect_ratio,omitempty"`
+	Width           *int   `json:"width,omitempty"`
+	Height          *int   `json:"height,omitempty"`
 	ResponseFormat  string `json:"response_format,omitempty"`
 	N               int    `json:"n,omitempty"`
 	PromptOptimizer *bool  `json:"prompt_optimizer,omitempty"`
@@ -55,7 +57,10 @@ func oaiImage2MiniMaxImageRequest(request dto.ImageRequest) MiniMaxImageRequest 
 	if request.N != nil && *request.N > 0 {
 		minimaxRequest.N = int(*request.N)
 	}
-	if aspectRatio := aspectRatioFromImageRequest(request); aspectRatio != "" {
+	if width, height, ok := parseImageSize(request.Size); ok && (width > 1792 || height > 1792) {
+		minimaxRequest.Width = &width
+		minimaxRequest.Height = &height
+	} else if aspectRatio := aspectRatioFromImageRequest(request); aspectRatio != "" {
 		minimaxRequest.AspectRatio = aspectRatio
 	}
 	if raw, ok := request.Extra["prompt_optimizer"]; ok {

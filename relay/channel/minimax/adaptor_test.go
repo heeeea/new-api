@@ -84,6 +84,24 @@ func TestConvertImageRequest(t *testing.T) {
 	}
 }
 
+func TestConvertImageRequestPreserves2KDimensions(t *testing.T) {
+	t.Parallel()
+
+	request := dto.ImageRequest{
+		Model:  "image-01",
+		Prompt: "a 2K product poster",
+		Size:   "2048x1152",
+	}
+
+	got := oaiImage2MiniMaxImageRequest(request)
+	if got.AspectRatio != "" {
+		t.Fatalf("aspect_ratio = %q, want omitted when explicit 2K dimensions are used", got.AspectRatio)
+	}
+	if got.Width == nil || *got.Width != 2048 || got.Height == nil || *got.Height != 1152 {
+		t.Fatalf("dimensions = %v x %v, want 2048 x 1152", got.Width, got.Height)
+	}
+}
+
 func TestDoResponseForImageGeneration(t *testing.T) {
 	t.Parallel()
 
