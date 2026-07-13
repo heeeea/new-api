@@ -14,20 +14,24 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestConvertAudioRequestRejectsArkKeyWithoutDedicatedSpeechCredential(t *testing.T) {
-	c, _ := gin.CreateTestContext(httptest.NewRecorder())
-	_, err := (&Adaptor{}).ConvertAudioRequest(c, &relaycommon.RelayInfo{
-		RelayMode: constant.RelayModeAudioSpeech,
-		ChannelMeta: &relaycommon.ChannelMeta{
-			ApiKey: "ark-api-key",
-		},
-	}, dto.AudioRequest{
-		Model: "doubao-tts",
-		Input: "test",
-		Voice: "test-voice",
-		Speed: common.GetPointer(1.0),
-	})
-	require.ErrorContains(t, err, "dedicated Volcengine speech credential")
+func TestConvertAudioRequestRejectsMissingDedicatedSpeechCredentialParts(t *testing.T) {
+	for _, apiKey := range []string{"ark-api-key", "|access-token", "appid|", "|"} {
+		t.Run(apiKey, func(t *testing.T) {
+			c, _ := gin.CreateTestContext(httptest.NewRecorder())
+			_, err := (&Adaptor{}).ConvertAudioRequest(c, &relaycommon.RelayInfo{
+				RelayMode: constant.RelayModeAudioSpeech,
+				ChannelMeta: &relaycommon.ChannelMeta{
+					ApiKey: apiKey,
+				},
+			}, dto.AudioRequest{
+				Model: "doubao-tts",
+				Input: "test",
+				Voice: "test-voice",
+				Speed: common.GetPointer(1.0),
+			})
+			require.ErrorContains(t, err, "dedicated Volcengine speech credential")
+		})
+	}
 }
 
 func TestConvertSeedream5ImageRequestAddsOfficialLargeOutputAndReferenceInputPrice(t *testing.T) {

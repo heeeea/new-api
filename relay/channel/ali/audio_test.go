@@ -143,6 +143,27 @@ func TestAliAudioResponseNormalizesQwenURLAndMiniMaxHex(t *testing.T) {
 		assert.Equal(t, 6, usage.(*dto.Usage).TotalTokens)
 	})
 
+	t.Run("qwen base64", func(t *testing.T) {
+		recorder := httptest.NewRecorder()
+		c, _ := gin.CreateTestContext(recorder)
+		c.Request = httptest.NewRequest(http.MethodPost, "/v1/audio/speech", nil)
+		c.Set(aliAudioResponseFormatContextKey, "wav")
+		usage, apiErr := (&Adaptor{}).DoResponse(c, &http.Response{
+			StatusCode: http.StatusOK,
+			Header:     make(http.Header),
+			Body: io.NopCloser(strings.NewReader(`{
+				"status_code":200,
+				"output":{"audio":{"data":"UklGRg=="}},
+				"usage":{"characters":5}
+			}`)),
+		}, aliAudioTestInfo("qwen3-tts-flash"))
+		require.Nil(t, apiErr)
+		assert.Equal(t, http.StatusOK, recorder.Code)
+		assert.Equal(t, "audio/wav", recorder.Header().Get("Content-Type"))
+		assert.Equal(t, []byte("RIFF"), recorder.Body.Bytes())
+		assert.Equal(t, 5, usage.(*dto.Usage).TotalTokens)
+	})
+
 	t.Run("minimax hex", func(t *testing.T) {
 		recorder := httptest.NewRecorder()
 		c, _ := gin.CreateTestContext(recorder)
@@ -165,6 +186,29 @@ func TestAliAudioResponseNormalizesQwenURLAndMiniMaxHex(t *testing.T) {
 		assert.Equal(t, "audio/wav", recorder.Header().Get("Content-Type"))
 		assert.Equal(t, []byte("RIFF"), recorder.Body.Bytes())
 		assert.Equal(t, 4, usage.(*dto.Usage).TotalTokens)
+	})
+
+	t.Run("minimax url", func(t *testing.T) {
+		recorder := httptest.NewRecorder()
+		c, _ := gin.CreateTestContext(recorder)
+		c.Request = httptest.NewRequest(http.MethodPost, "/v1/audio/speech", nil)
+		c.Set(aliAudioOutputFormatContextKey, "url")
+		usage, apiErr := (&Adaptor{}).DoResponse(c, &http.Response{
+			StatusCode: http.StatusOK,
+			Header:     make(http.Header),
+			Body: io.NopCloser(strings.NewReader(`{
+				"output":{
+					"base_resp":{"status_code":0,"status_msg":"success"},
+					"data":{"audio":"https://cdn.example.test/minimax.mp3","status":2},
+					"extra_info":{"usage_characters":7}
+				},
+				"usage":{"characters":7}
+			}`)),
+		}, aliAudioTestInfo("MiniMax/speech-2.8-turbo"))
+		require.Nil(t, apiErr)
+		assert.Equal(t, http.StatusFound, recorder.Code)
+		assert.Equal(t, "https://cdn.example.test/minimax.mp3", recorder.Header().Get("Location"))
+		assert.Equal(t, 7, usage.(*dto.Usage).TotalTokens)
 	})
 }
 

@@ -109,10 +109,10 @@ var responseFormatToEncodingMap = map[string]string{
 
 func parseVolcengineAuth(apiKey string) (appID, token string, err error) {
 	parts := strings.Split(apiKey, "|")
-	if len(parts) != 2 {
+	if len(parts) != 2 || strings.TrimSpace(parts[0]) == "" || strings.TrimSpace(parts[1]) == "" {
 		return "", "", errors.New("dedicated Volcengine speech credential is required, expected: appid|access_token")
 	}
-	return parts[0], parts[1], nil
+	return strings.TrimSpace(parts[0]), strings.TrimSpace(parts[1]), nil
 }
 
 func mapVoiceType(openAIVoice string) string {

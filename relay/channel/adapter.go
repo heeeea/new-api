@@ -31,6 +31,10 @@ type Adaptor interface {
 	ConvertGeminiRequest(c *gin.Context, info *relaycommon.RelayInfo, request *dto.GeminiChatRequest) (any, error)
 }
 
+type AudioErrorResponseAdaptor interface {
+	HandleAudioErrorResponse(c *gin.Context, resp *http.Response, info *relaycommon.RelayInfo) *types.NewAPIError
+}
+
 type TaskAdaptor interface {
 	Init(info *relaycommon.RelayInfo)
 

@@ -270,6 +270,10 @@ func (a *Adaptor) DoResponse(c *gin.Context, resp *http.Response, info *relaycom
 	}
 }
 
+func (a *Adaptor) HandleAudioErrorResponse(_ *gin.Context, resp *http.Response, info *relaycommon.RelayInfo) *types.NewAPIError {
+	return handleAudioErrorResponse(resp, info)
+}
+
 func (a *Adaptor) GetModelList() []string {
 	return ModelList
 }

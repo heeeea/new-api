@@ -241,6 +241,25 @@ func handleAudioResponse(c *gin.Context, resp *http.Response, info *relaycommon.
 	return nil, types.NewErrorWithStatusCode(errors.New("Ali audio response did not contain audio"), types.ErrorCodeEmptyResponse, http.StatusBadGateway)
 }
 
+func handleAudioErrorResponse(resp *http.Response, info *relaycommon.RelayInfo) *types.NewAPIError {
+	defer resp.Body.Close()
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return types.NewErrorWithStatusCode(errors.New("failed to read Ali audio error response"), types.ErrorCodeReadResponseBodyFailed, resp.StatusCode)
+	}
+	response := aliAudioResponse{}
+	if err = common.Unmarshal(body, &response); err != nil {
+		return types.NewErrorWithStatusCode(fmt.Errorf("Ali audio request failed with status %d", resp.StatusCode), types.ErrorCodeBadResponseStatusCode, resp.StatusCode)
+	}
+	code := response.Code
+	message := response.Message
+	if response.Output.BaseResponse.StatusCode != 0 {
+		code = fmt.Sprintf("%d", response.Output.BaseResponse.StatusCode)
+		message = response.Output.BaseResponse.StatusMsg
+	}
+	return aliAudioUpstreamError(info, code, message, resp.StatusCode)
+}
+
 func aliAudioUpstreamError(info *relaycommon.RelayInfo, code, message string, status int) *types.NewAPIError {
 	if info != nil && info.ChannelMeta != nil && info.ApiKey != "" {
 		code = strings.ReplaceAll(code, info.ApiKey, "[REDACTED]")
