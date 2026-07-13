@@ -112,11 +112,15 @@ var defaultModelRatio = map[string]float64{
 	"text-curie-001":                            1,
 	"text-davinci-edit-001":                     10,
 	"code-davinci-edit-001":                     10,
-	"whisper-1":                                 15,  // $0.006 / minute -> $0.006 / 150 words -> $0.006 / 200 tokens -> $0.03 / 1k tokens
-	"tts-1":                                     7.5, // 1k characters -> $0.015
-	"tts-1-1106":                                7.5, // 1k characters -> $0.015
-	"tts-1-hd":                                  15,  // 1k characters -> $0.03
-	"tts-1-hd-1106":                             15,  // 1k characters -> $0.03
+	"whisper-1":                                 15,                 // $0.006 / minute -> $0.006 / 150 words -> $0.006 / 200 tokens -> $0.03 / 1k tokens
+	"tts-1":                                     7.5,                // 1k characters -> $0.015
+	"tts-1-1106":                                7.5,                // 1k characters -> $0.015
+	"tts-1-hd":                                  15,                 // 1k characters -> $0.03
+	"tts-1-hd-1106":                             15,                 // 1k characters -> $0.03
+	"qwen3-tts-flash":                           80 / 1000.0 * RMB,  // ¥0.8 / 10k characters
+	"qwen3-tts-instruct-flash":                  80 / 1000.0 * RMB,  // ¥0.8 / 10k characters
+	"minimax-speech-2.8-turbo":                  200 / 1000.0 * RMB, // ¥2 / 10k characters
+	"minimax-speech-2.8-hd":                     350 / 1000.0 * RMB, // ¥3.5 / 10k characters
 	"davinci":                                   10,
 	"curie":                                     10,
 	"text-embedding-3-small":                    0.01,
@@ -312,13 +316,17 @@ var defaultAudioRatio = map[string]float64{
 }
 
 var defaultAudioCompletionRatio = map[string]float64{
-	"gpt-4o-realtime":      2,
-	"gpt-4o-mini-realtime": 2,
-	"gpt-4o-mini-tts":      1,
-	"tts-1":                0,
-	"tts-1-hd":             0,
-	"tts-1-1106":           0,
-	"tts-1-hd-1106":        0,
+	"gpt-4o-realtime":          2,
+	"gpt-4o-mini-realtime":     2,
+	"gpt-4o-mini-tts":          1,
+	"tts-1":                    0,
+	"tts-1-hd":                 0,
+	"tts-1-1106":               0,
+	"tts-1-hd-1106":            0,
+	"qwen3-tts-flash":          0,
+	"qwen3-tts-instruct-flash": 0,
+	"minimax-speech-2.8-turbo": 0,
+	"minimax-speech-2.8-hd":    0,
 }
 
 var modelPriceMap = types.NewRWMap[string, float64]()
@@ -326,10 +334,14 @@ var modelRatioMap = types.NewRWMap[string, float64]()
 var completionRatioMap = types.NewRWMap[string, float64]()
 
 var defaultCompletionRatio = map[string]float64{
-	"gpt-4-gizmo-*":  2,
-	"gpt-4o-gizmo-*": 3,
-	"gpt-4-all":      2,
-	"gpt-image-1":    8,
+	"gpt-4-gizmo-*":            2,
+	"gpt-4o-gizmo-*":           3,
+	"gpt-4-all":                2,
+	"gpt-image-1":              8,
+	"qwen3-tts-flash":          0,
+	"qwen3-tts-instruct-flash": 0,
+	"minimax-speech-2.8-turbo": 0,
+	"minimax-speech-2.8-hd":    0,
 }
 
 // InitRatioSettings initializes all model related settings maps
