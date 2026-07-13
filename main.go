@@ -326,6 +326,13 @@ func InitResources() error {
 
 	// Initialize options, should after model.InitDB()
 	model.InitOptionMap()
+	if err = controller.BootstrapEnvManagedChannels(); err != nil {
+		common.FatalLog("failed to bootstrap env-managed channels: " + err.Error())
+		return err
+	}
+	if err = controller.BootstrapEnvPricingPreset(); err != nil {
+		common.SysError("failed to refresh env-managed pricing preset, keeping current prices: " + err.Error())
+	}
 
 	// 清理旧的磁盘缓存文件
 	common.CleanupOldCacheFiles()
