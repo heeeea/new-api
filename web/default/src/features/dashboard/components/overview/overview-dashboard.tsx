@@ -63,6 +63,7 @@ import { AnnouncementsPanel } from './announcements-panel'
 import { ApiInfoPanel } from './api-info-panel'
 import { FAQPanel } from './faq-panel'
 import { PerformanceHealthPanel } from './performance-health-panel'
+import { ProviderRechargePanel } from './provider-recharge-panel'
 import { SummaryCards } from './summary-cards'
 import { UptimePanel } from './uptime-panel'
 
@@ -767,6 +768,11 @@ export function OverviewDashboard() {
               {isAdmin && (
                 <CardStaggerItem className='lg:col-span-2'>
                   <PerformanceHealthPanel />
+                </CardStaggerItem>
+              )}
+              {isAdmin && (
+                <CardStaggerItem className='lg:col-span-2'>
+                  <ProviderRechargePanel />
                 </CardStaggerItem>
               )}
               {showApiInfoPanel && (

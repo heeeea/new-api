@@ -18,7 +18,7 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { useQuery } from '@tanstack/react-query'
 import { Link } from '@tanstack/react-router'
-import { ArrowRight, Flame, ShieldCheck, TrendingDown } from 'lucide-react'
+import { ArrowRight, Flame, ShieldCheck } from 'lucide-react'
 import { useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 
@@ -30,6 +30,7 @@ import type { QuotaDataItem } from '@/features/dashboard/types'
 import { useStatus } from '@/hooks/use-status'
 import { getCurrencyLabel, isCurrencyDisplayEnabled } from '@/lib/currency'
 import { formatNumber, formatQuota } from '@/lib/format'
+import { ROLE } from '@/lib/roles'
 import { computeTimeRange } from '@/lib/time'
 import { cn } from '@/lib/utils'
 import { useAuthStore } from '@/stores/auth-store'
@@ -163,6 +164,43 @@ export function SummaryCards() {
     staleTime: 60 * 1000,
   })
 
+  const isAdmin = Boolean(user?.role && user.role >= ROLE.ADMIN)
+  const spendRange = useMemo(
+    () => ({
+      start_timestamp: 0,
+      end_timestamp: Math.floor(Date.now() / 1000),
+    }),
+    []
+  )
+  const modelSpendQuery = useQuery({
+    queryKey: ['dashboard', 'overview', 'model-spend', isAdmin],
+    queryFn: async () =>
+      getUserQuotaDates(
+        {
+          start_timestamp: spendRange.start_timestamp,
+          end_timestamp: spendRange.end_timestamp,
+          default_time: 'hour',
+        },
+        isAdmin
+      ),
+    staleTime: 60 * 1000,
+  })
+
+  const { totalSpend, modelSpendList } = useMemo(() => {
+    const perModel = new Map<string, number>()
+    let total = 0
+    for (const item of modelSpendQuery.data?.data ?? []) {
+      const quota = Number(item.quota) || 0
+      total += quota
+      const name = item.model_name?.trim() || 'unknown'
+      perModel.set(name, (perModel.get(name) ?? 0) + quota)
+    }
+    const list = [...perModel.entries()]
+      .map(([model, quota]) => ({ model, quota }))
+      .sort((a, b) => b.quota - a.quota)
+    return { totalSpend: total, modelSpendList: list }
+  }, [modelSpendQuery.data])
+
   const summaryValues = useMemo(() => {
     return {
       usedDisplay: formatQuota(usedQuota),
@@ -208,7 +246,6 @@ export function SummaryCards() {
 
   const healthLevel = getHealthLevel(remainQuota, recentUsage)
   const healthCfg = HEALTH_CONFIG[healthLevel]
-  const runwayDays = getRunwayDays(remainQuota, recentUsage)
 
   const todayUsageDisplay = formatQuota(recentUsage)
 
@@ -274,7 +311,7 @@ export function SummaryCards() {
           <div className='flex flex-col gap-3'>
             <div className='flex items-center justify-between'>
               <span className='text-muted-foreground text-xs font-medium'>
-                {t('Credit remaining')}
+                {t('Total spend')}
               </span>
               <span className='flex items-center gap-1.5'>
                 <span
@@ -288,10 +325,28 @@ export function SummaryCards() {
             </div>
 
             <div className='font-mono text-2xl font-semibold tracking-tight'>
-              {formatQuota(remainQuota)}
+              {formatQuota(totalSpend)}
             </div>
 
+            <p className='text-muted-foreground line-clamp-3 text-[11px] leading-4'>
+              {modelSpendList.length > 0
+                ? modelSpendList
+                    .slice(0, 6)
+                    .map((item) => `${item.model} ${formatQuota(item.quota)}`)
+                    .join(' · ')
+                : t('No spend yet')}
+            </p>
+
             <div className='grid grid-cols-2 gap-2'>
+              <div className='bg-background/60 rounded-lg px-2.5 py-2'>
+                <div className='text-muted-foreground flex items-center gap-1 text-[11px] leading-none font-medium'>
+                  <ShieldCheck className='size-3 shrink-0' aria-hidden='true' />
+                  <span className='truncate'>{t('Credit remaining')}</span>
+                </div>
+                <div className='text-foreground mt-1.5 truncate text-xs font-semibold tabular-nums'>
+                  {formatQuota(remainQuota)}
+                </div>
+              </div>
               <div className='bg-background/60 rounded-lg px-2.5 py-2'>
                 <div className='text-muted-foreground flex items-center gap-1 text-[11px] leading-none font-medium'>
                   <Flame className='size-3 shrink-0' aria-hidden='true' />
@@ -299,39 +354,6 @@ export function SummaryCards() {
                 </div>
                 <div className='text-foreground mt-1.5 truncate text-xs font-semibold tabular-nums'>
                   {formatQuota(recentUsage)}
-                </div>
-              </div>
-              <div className='bg-background/60 rounded-lg px-2.5 py-2'>
-                <div className='text-muted-foreground flex items-center gap-1 text-[11px] leading-none font-medium'>
-                  {runwayDays !== null && runwayDays < 3 ? (
-                    <TrendingDown
-                      className='size-3 shrink-0'
-                      aria-hidden='true'
-                    />
-                  ) : (
-                    <ShieldCheck
-                      className='size-3 shrink-0'
-                      aria-hidden='true'
-                    />
-                  )}
-                  <span className='truncate'>{t('Runway')}</span>
-                </div>
-                <div
-                  className={cn(
-                    'mt-1.5 truncate text-xs font-semibold tabular-nums',
-                    healthLevel === 'critical' && 'text-destructive',
-                    healthLevel === 'caution' && 'text-warning'
-                  )}
-                >
-                  {runwayDays !== null
-                    ? runwayDays < 1
-                      ? t('Less than 1 day left')
-                      : runwayDays > 999
-                        ? `999+ ${t('days')}`
-                        : `~${formatNumber(Math.floor(runwayDays))} ${t('days')}`
-                    : remainQuota <= 0
-                      ? t('Balance depleted')
-                      : t('No recent usage')}
                 </div>
               </div>
             </div>
