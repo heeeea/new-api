@@ -1,6 +1,7 @@
 package minimax
 
 import (
+	"context"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -8,6 +9,7 @@ import (
 	"io"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/QuantumNous/new-api/dto"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
@@ -145,7 +147,17 @@ func handleTTSResponse(c *gin.Context, resp *http.Response, info *relaycommon.Re
 	}
 
 	if strings.HasPrefix(minimaxResp.Data.Audio, "http") {
-		c.Redirect(http.StatusFound, minimaxResp.Data.Audio)
+		// MiniMax 返回的是 OSS 签名地址，302 跳转会让客户端带上
+		// Content-Type: application/json 导致 OSS 验签失败，改为服务端干净下载。
+		audioData, contentType, downloadErr := downloadMiniMaxAudio(c.Request.Context(), minimaxResp.Data.Audio)
+		if downloadErr != nil {
+			return nil, types.NewErrorWithStatusCode(
+				downloadErr,
+				types.ErrorCodeBadResponse,
+				http.StatusBadGateway,
+			)
+		}
+		c.Data(http.StatusOK, contentType, audioData)
 	} else {
 		// Handle hex-encoded audio data
 		audioData, decodeErr := hex.DecodeString(minimaxResp.Data.Audio)
@@ -170,6 +182,32 @@ func handleTTSResponse(c *gin.Context, resp *http.Response, info *relaycommon.Re
 	}
 
 	return usage, nil
+}
+
+// downloadMiniMaxAudio 以干净的 GET（不带 Content-Type）下载 MiniMax 返回的 OSS 签名音频地址。
+func downloadMiniMaxAudio(ctx context.Context, rawURL string) ([]byte, string, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, rawURL, nil)
+	if err != nil {
+		return nil, "", fmt.Errorf("failed to build minimax audio download request: %w", err)
+	}
+	client := &http.Client{Timeout: 60 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, "", fmt.Errorf("failed to download minimax audio: %w", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return nil, "", fmt.Errorf("minimax audio download failed with status %d", resp.StatusCode)
+	}
+	data, err := io.ReadAll(io.LimitReader(resp.Body, 64<<20))
+	if err != nil {
+		return nil, "", fmt.Errorf("failed to read minimax audio: %w", err)
+	}
+	contentType := strings.TrimSpace(strings.Split(resp.Header.Get("Content-Type"), ";")[0])
+	if !strings.HasPrefix(contentType, "audio/") {
+		contentType = "audio/mpeg"
+	}
+	return data, contentType, nil
 }
 
 func handleChatCompletionResponse(c *gin.Context, resp *http.Response, info *relaycommon.RelayInfo) (usage any, err *types.NewAPIError) {
