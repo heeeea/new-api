@@ -39,19 +39,26 @@ func (a *Adaptor) ConvertAudioRequest(c *gin.Context, info *relaycommon.RelayInf
 
 	voiceID := request.Voice
 	speed := lo.FromPtrOr(request.Speed, 0.0)
-	outputFormat := request.ResponseFormat
+	format := request.ResponseFormat
+	if format == "" {
+		format = "mp3"
+	}
+
+	model := info.UpstreamModelName
+	if model == "" {
+		model = info.OriginModelName
+	}
 
 	minimaxRequest := MiniMaxTTSRequest{
-		Model: info.OriginModelName,
+		Model: model,
 		Text:  request.Input,
 		VoiceSetting: VoiceSetting{
 			VoiceID: voiceID,
 			Speed:   speed,
 		},
 		AudioSetting: &AudioSetting{
-			Format: outputFormat,
+			Format: format,
 		},
-		OutputFormat: outputFormat,
 	}
 
 	// 同步扩展字段的厂商自定义metadata
@@ -61,12 +68,15 @@ func (a *Adaptor) ConvertAudioRequest(c *gin.Context, info *relaycommon.RelayInf
 		}
 	}
 
+	outputFormat := minimaxRequest.OutputFormat
+	if outputFormat != "hex" && outputFormat != "url" {
+		outputFormat = "hex"
+	}
+	minimaxRequest.OutputFormat = outputFormat
+
 	jsonData, err := json.Marshal(minimaxRequest)
 	if err != nil {
 		return nil, fmt.Errorf("error marshalling minimax request: %w", err)
-	}
-	if outputFormat != "hex" {
-		outputFormat = "url"
 	}
 
 	c.Set("response_format", outputFormat)
