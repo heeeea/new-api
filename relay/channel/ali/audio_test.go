@@ -117,7 +117,7 @@ func TestConvertAudioRequestMiniMaxMapsOfficialControls(t *testing.T) {
 
 func TestAliAudioRequestURLUsesMultimodalGenerationEndpoint(t *testing.T) {
 	info := aliAudioTestInfo("qwen3-tts-flash")
-	info.ChannelBaseUrl = "https://dashscope.aliyuncs.com/api/v1"
+	info.ChannelBaseUrl = "https://dashscope.aliyuncs.com"
 	url, err := (&Adaptor{}).GetRequestURL(info)
 	require.NoError(t, err)
 	assert.Equal(t, "https://dashscope.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation", url)
