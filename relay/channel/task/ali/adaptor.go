@@ -246,11 +246,11 @@ func sizeToResolution(size string) (string, error) {
 
 func ProcessAliOtherRatios(aliReq *AliVideoRequest) (map[string]float64, error) {
 	otherRatios := make(map[string]float64)
-	// animate 模型按服务模式(mode)计费：wan-std ¥0.64/秒、wan-pro ¥0.92/秒，
-	// 以 wan-std 为基准价，wan-pro 加价 0.92/0.64 倍
+	// animate 模型按服务模式(mode)计费：mix std/pro 为 ¥0.6/¥0.9 每秒，
+	// move std/pro 为 ¥0.4/¥0.6 每秒，pro 均为 std 的 1.5 倍；std 基准价由模型价格配置
 	if isAnimateModel(aliReq.Model) {
 		if aliReq.Parameters != nil && aliReq.Parameters.Mode == "wan-pro" {
-			otherRatios["mode-wan-pro"] = 0.92 / 0.64
+			otherRatios["mode-wan-pro"] = 1.5
 		}
 		return otherRatios, nil
 	}

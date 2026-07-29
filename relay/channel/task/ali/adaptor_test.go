@@ -412,7 +412,7 @@ func TestProcessAliOtherRatiosAnimateModePricing(t *testing.T) {
 		Parameters: &AliVideoParameters{Mode: "wan-pro"},
 	})
 	require.NoError(t, err)
-	require.InDelta(t, 0.92/0.64, ratios["mode-wan-pro"], 0.000001)
+	require.InDelta(t, 1.5, ratios["mode-wan-pro"], 0.000001)
 
 	ratios, err = ProcessAliOtherRatios(&AliVideoRequest{
 		Model:      "wan2.2-animate-mix",
