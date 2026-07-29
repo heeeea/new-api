@@ -169,7 +169,10 @@ func ValidateMultipartDirect(c *gin.Context, info *RelayInfo) *dto.TaskError {
 	}
 
 	if taskErr := validatePrompt(prompt); taskErr != nil {
-		return taskErr
+		// wan2.2-animate-* 上游协议没有 prompt 字段，允许为空
+		if !strings.HasPrefix(model, "wan2.2-animate-") && !strings.HasPrefix(info.UpstreamModelName, "wan2.2-animate-") {
+			return taskErr
+		}
 	}
 
 	if taskErr := validateTaskDurationBounds(req); taskErr != nil {

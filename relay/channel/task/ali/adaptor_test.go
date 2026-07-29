@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/model"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/stretchr/testify/require"
 )
@@ -249,4 +250,174 @@ func TestProcessAliOtherRatiosPricesHappyHorseAt1080P(t *testing.T) {
 			require.InDelta(t, want, ratios["resolution-1080P"], 0.000001)
 		})
 	}
+}
+
+func TestConvertToAliRequestAnimateExtractsMediaFromMetadataContent(t *testing.T) {
+	adaptor := &TaskAdaptor{}
+	req := relaycommon.TaskSubmitReq{
+		Model:  "wan2.2-animate-mix",
+		Prompt: "把视频里的人换成图片人物",
+		Metadata: map[string]interface{}{
+			"content": []interface{}{
+				map[string]interface{}{
+					"type":      "video_url",
+					"role":      "reference_video",
+					"video_url": map[string]interface{}{"url": "https://example.com/source.mp4"},
+				},
+				map[string]interface{}{
+					"type":      "image_url",
+					"role":      "reference_image",
+					"image_url": map[string]interface{}{"url": "https://example.com/person.png"},
+				},
+				map[string]interface{}{"type": "text", "text": "可选描述"},
+			},
+			"mode":       "wan-pro",
+			"resolution": "720p",
+			"duration":   5,
+			"parameters": map[string]interface{}{
+				"resolution": "720P",
+				"duration":   5,
+				"watermark":  true,
+			},
+		},
+	}
+
+	aliReq, err := adaptor.convertToAliRequest(testRelayInfo(), req)
+
+	require.NoError(t, err)
+	require.Equal(t, "wan2.2-animate-mix", aliReq.Model)
+	require.Equal(t, "https://example.com/source.mp4", aliReq.Input.VideoURL)
+	require.Equal(t, "https://example.com/person.png", aliReq.Input.ImageURL)
+	require.Equal(t, "wan-pro", aliReq.Parameters.Mode)
+	// watermark 从 parameters 搬到 input（上游协议位置）
+	require.True(t, aliReq.Input.Watermark)
+	// duration 保留在内部结构供计费使用
+	require.Equal(t, 5, aliReq.Parameters.Duration)
+
+	// 上行请求体只保留 animate 协议字段
+	wire := sanitizeAnimateRequest(aliReq)
+	body, err := common.Marshal(wire)
+	require.NoError(t, err)
+	require.Contains(t, string(body), `"video_url":"https://example.com/source.mp4"`)
+	require.Contains(t, string(body), `"image_url":"https://example.com/person.png"`)
+	require.Contains(t, string(body), `"mode":"wan-pro"`)
+	require.Contains(t, string(body), `"watermark":true`)
+	require.NotContains(t, string(body), `"duration"`)
+	require.NotContains(t, string(body), `"resolution"`)
+	require.NotContains(t, string(body), `"prompt_extend"`)
+	require.NotContains(t, string(body), `"img_url"`)
+	require.NotContains(t, string(body), `"prompt"`)
+}
+
+func TestConvertToAliRequestAnimateDefaultsModeToWanStd(t *testing.T) {
+	adaptor := &TaskAdaptor{}
+	req := relaycommon.TaskSubmitReq{
+		Model: "wan2.2-animate-move",
+		Metadata: map[string]interface{}{
+			"content": []interface{}{
+				map[string]interface{}{
+					"type":      "image_url",
+					"image_url": map[string]interface{}{"url": "https://example.com/person.png"},
+				},
+				map[string]interface{}{
+					"type":      "video_url",
+					"video_url": map[string]interface{}{"url": "https://example.com/source.mp4"},
+				},
+			},
+		},
+	}
+
+	aliReq, err := adaptor.convertToAliRequest(testRelayInfo(), req)
+
+	require.NoError(t, err)
+	require.Equal(t, "wan-std", aliReq.Parameters.Mode)
+	require.False(t, aliReq.Input.Watermark)
+}
+
+func TestConvertToAliRequestAnimateRequiresVideoAndImage(t *testing.T) {
+	adaptor := &TaskAdaptor{}
+	req := relaycommon.TaskSubmitReq{
+		Model: "wan2.2-animate-mix",
+		Metadata: map[string]interface{}{
+			"content": []interface{}{
+				map[string]interface{}{
+					"type":      "image_url",
+					"image_url": map[string]interface{}{"url": "https://example.com/person.png"},
+				},
+			},
+		},
+	}
+
+	_, err := adaptor.convertToAliRequest(testRelayInfo(), req)
+
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "video_url and image_url")
+}
+
+func TestBuildRequestURLAnimateUsesImage2VideoEndpoint(t *testing.T) {
+	adaptor := &TaskAdaptor{baseURL: "https://dashscope.aliyuncs.com"}
+
+	info := testRelayInfo()
+	info.UpstreamModelName = "wan2.2-animate-move"
+	url, err := adaptor.BuildRequestURL(info)
+	require.NoError(t, err)
+	require.Equal(t, "https://dashscope.aliyuncs.com/api/v1/services/aigc/image2video/video-synthesis", url)
+
+	info.UpstreamModelName = "wan2.6-i2v"
+	url, err = adaptor.BuildRequestURL(info)
+	require.NoError(t, err)
+	require.Equal(t, "https://dashscope.aliyuncs.com/api/v1/services/aigc/video-generation/video-synthesis", url)
+}
+
+func TestParseTaskResultAnimateReadsResultsVideoURL(t *testing.T) {
+	adaptor := &TaskAdaptor{}
+	body := []byte(`{
+		"request_id": "req-1",
+		"output": {
+			"task_id": "task-1",
+			"task_status": "SUCCEEDED",
+			"results": {"video_url": "https://oss.example.com/out.mp4"}
+		},
+		"usage": {"video_duration": 5.2, "video_ratio": "standard"}
+	}`)
+
+	result, err := adaptor.ParseTaskResult(body)
+
+	require.NoError(t, err)
+	require.Equal(t, model.TaskStatusSuccess, result.Status)
+	require.Equal(t, "https://oss.example.com/out.mp4", result.Url)
+}
+
+func TestParseTaskResultLegacyOutputVideoURLUnchanged(t *testing.T) {
+	adaptor := &TaskAdaptor{}
+	body := []byte(`{
+		"request_id": "req-1",
+		"output": {
+			"task_id": "task-1",
+			"task_status": "SUCCEEDED",
+			"video_url": "https://oss.example.com/legacy.mp4"
+		}
+	}`)
+
+	result, err := adaptor.ParseTaskResult(body)
+
+	require.NoError(t, err)
+	require.Equal(t, model.TaskStatusSuccess, result.Status)
+	require.Equal(t, "https://oss.example.com/legacy.mp4", result.Url)
+}
+
+func TestProcessAliOtherRatiosAnimateModePricing(t *testing.T) {
+	ratios, err := ProcessAliOtherRatios(&AliVideoRequest{
+		Model:      "wan2.2-animate-move",
+		Parameters: &AliVideoParameters{Mode: "wan-pro"},
+	})
+	require.NoError(t, err)
+	require.InDelta(t, 0.92/0.64, ratios["mode-wan-pro"], 0.000001)
+
+	ratios, err = ProcessAliOtherRatios(&AliVideoRequest{
+		Model:      "wan2.2-animate-mix",
+		Parameters: &AliVideoParameters{Mode: "wan-std"},
+	})
+	require.NoError(t, err)
+	require.Empty(t, ratios)
 }

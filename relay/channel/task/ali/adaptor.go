@@ -49,6 +49,9 @@ type AliVideoInput struct {
 	Media          []AliVideoMedia `json:"media,omitempty"`           // 媒体列表（wan2.7-i2v新协议）
 	NegativePrompt string          `json:"negative_prompt,omitempty"` // 反向提示词
 	Template       string          `json:"template,omitempty"`        // 视频特效模板
+	VideoURL       string          `json:"video_url,omitempty"`       // 参考视频URL（wan2.2-animate-*）
+	ImageURL       string          `json:"image_url,omitempty"`       // 人物图片URL（wan2.2-animate-*）
+	Watermark      bool            `json:"watermark,omitempty"`       // 水印（wan2.2-animate-*，上游协议中位于 input 内）
 }
 
 // AliVideoParameters 视频参数
@@ -61,6 +64,8 @@ type AliVideoParameters struct {
 	Watermark    bool   `json:"watermark,omitempty"`     // 是否添加水印
 	Audio        *bool  `json:"audio,omitempty"`         // 是否添加音频（wan2.5）
 	Seed         int    `json:"seed,omitempty"`          // 随机数种子
+	Mode         string `json:"mode,omitempty"`          // 服务模式: wan-std/wan-pro（wan2.2-animate-*）
+	CheckImage   *bool  `json:"check_image,omitempty"`   // 是否检测输入图片（wan2.2-animate-*）
 }
 
 // AliVideoResponse 阿里通义万相响应
@@ -74,16 +79,47 @@ type AliVideoResponse struct {
 
 // AliVideoOutput 输出信息
 type AliVideoOutput struct {
-	TaskID        string `json:"task_id"`
-	TaskStatus    string `json:"task_status"`
-	SubmitTime    string `json:"submit_time,omitempty"`
-	ScheduledTime string `json:"scheduled_time,omitempty"`
-	EndTime       string `json:"end_time,omitempty"`
-	OrigPrompt    string `json:"orig_prompt,omitempty"`
-	ActualPrompt  string `json:"actual_prompt,omitempty"`
-	VideoURL      string `json:"video_url,omitempty"`
-	Code          string `json:"code,omitempty"`
-	Message       string `json:"message,omitempty"`
+	TaskID        string           `json:"task_id"`
+	TaskStatus    string           `json:"task_status"`
+	SubmitTime    string           `json:"submit_time,omitempty"`
+	ScheduledTime string           `json:"scheduled_time,omitempty"`
+	EndTime       string           `json:"end_time,omitempty"`
+	OrigPrompt    string           `json:"orig_prompt,omitempty"`
+	ActualPrompt  string           `json:"actual_prompt,omitempty"`
+	VideoURL      string           `json:"video_url,omitempty"`
+	Results       *AliVideoResults `json:"results,omitempty"` // 结果对象（wan2.2-animate-* 的 video_url 在 output.results 内）
+	Code          string           `json:"code,omitempty"`
+	Message       string           `json:"message,omitempty"`
+}
+
+// AliVideoResults wan2.2-animate-* 成功结果结构
+type AliVideoResults struct {
+	VideoURL string `json:"video_url,omitempty"`
+}
+
+// ResultVideoURL 返回视频URL，兼容 animate 模型的 output.results.video_url 结构
+func (o *AliVideoOutput) ResultVideoURL() string {
+	if o.VideoURL != "" {
+		return o.VideoURL
+	}
+	if o.Results != nil {
+		return o.Results.VideoURL
+	}
+	return ""
+}
+
+// AliAnimateContentURL metadata.content 中媒体项的 url 包装
+type AliAnimateContentURL struct {
+	URL string `json:"url"`
+}
+
+// AliAnimateContentItem metadata.content 数组项（影销台透传的厂商扩展参数）
+type AliAnimateContentItem struct {
+	Type     string                `json:"type"`
+	Role     string                `json:"role,omitempty"`
+	Text     string                `json:"text,omitempty"`
+	VideoURL *AliAnimateContentURL `json:"video_url,omitempty"`
+	ImageURL *AliAnimateContentURL `json:"image_url,omitempty"`
 }
 
 // AliUsage 使用统计
@@ -136,6 +172,10 @@ func (a *TaskAdaptor) ValidateRequestAndSetAction(c *gin.Context, info *relaycom
 }
 
 func (a *TaskAdaptor) BuildRequestURL(info *relaycommon.RelayInfo) (string, error) {
+	if isAnimateModel(info.UpstreamModelName) {
+		// wan2.2-animate-* 走 image2video 端点（官方文档确认）
+		return fmt.Sprintf("%s/api/v1/services/aigc/image2video/video-synthesis", a.baseURL), nil
+	}
 	return fmt.Sprintf("%s/api/v1/services/aigc/video-generation/video-synthesis", a.baseURL), nil
 }
 
@@ -156,6 +196,11 @@ func (a *TaskAdaptor) BuildRequestBody(c *gin.Context, info *relaycommon.RelayIn
 	aliReq, err := a.convertToAliRequest(info, taskReq)
 	if err != nil {
 		return nil, errors.Wrap(err, "convert_to_ali_request_failed")
+	}
+	if isAnimateModel(aliReq.Model) {
+		// animate 上游协议只接受 image_url/video_url/watermark + parameters.mode/check_image，
+		// 剔除其它模型的遗留字段（prompt、duration、resolution 等），避免上游报错
+		aliReq = sanitizeAnimateRequest(aliReq)
 	}
 	logger.LogJson(c, "ali video request body", aliReq)
 
@@ -201,6 +246,14 @@ func sizeToResolution(size string) (string, error) {
 
 func ProcessAliOtherRatios(aliReq *AliVideoRequest) (map[string]float64, error) {
 	otherRatios := make(map[string]float64)
+	// animate 模型按服务模式(mode)计费：wan-std ¥0.64/秒、wan-pro ¥0.92/秒，
+	// 以 wan-std 为基准价，wan-pro 加价 0.92/0.64 倍
+	if isAnimateModel(aliReq.Model) {
+		if aliReq.Parameters != nil && aliReq.Parameters.Mode == "wan-pro" {
+			otherRatios["mode-wan-pro"] = 0.92 / 0.64
+		}
+		return otherRatios, nil
+	}
 	aliRatios := map[string]map[string]float64{
 		"wan2.6-i2v": {
 			"720P":  1,
@@ -287,6 +340,77 @@ func ProcessAliOtherRatios(aliReq *AliVideoRequest) (map[string]float64, error) 
 
 func isWan27I2VModel(model string) bool {
 	return strings.HasPrefix(model, "wan2.7-i2v")
+}
+
+func isAnimateModel(model string) bool {
+	return strings.HasPrefix(model, "wan2.2-animate-")
+}
+
+// extractAnimateMedia 从 metadata.content 中提取第一条 video_url 和 image_url
+func extractAnimateMedia(metadata map[string]interface{}) (videoURL, imageURL string) {
+	raw, ok := metadata["content"]
+	if !ok {
+		return "", ""
+	}
+	contentBytes, err := common.Marshal(raw)
+	if err != nil {
+		return "", ""
+	}
+	var items []AliAnimateContentItem
+	if err := common.Unmarshal(contentBytes, &items); err != nil {
+		return "", ""
+	}
+	for _, item := range items {
+		if videoURL == "" && item.Type == "video_url" && item.VideoURL != nil {
+			videoURL = strings.TrimSpace(item.VideoURL.URL)
+		}
+		if imageURL == "" && item.Type == "image_url" && item.ImageURL != nil {
+			imageURL = strings.TrimSpace(item.ImageURL.URL)
+		}
+	}
+	return videoURL, imageURL
+}
+
+// normalizeAnimateInput 组装 wan2.2-animate-* 的 input/parameters（在 metadata 合并之后调用）
+func normalizeAnimateInput(aliReq *AliVideoRequest, req relaycommon.TaskSubmitReq) error {
+	videoURL, imageURL := extractAnimateMedia(req.Metadata)
+	if aliReq.Input.VideoURL == "" {
+		aliReq.Input.VideoURL = videoURL
+	}
+	if aliReq.Input.ImageURL == "" {
+		aliReq.Input.ImageURL = firstNonEmpty(imageURL, firstTaskImage(req))
+	}
+	if aliReq.Parameters.Mode == "" {
+		if mode, ok := req.Metadata["mode"].(string); ok {
+			aliReq.Parameters.Mode = strings.TrimSpace(mode)
+		}
+	}
+	if aliReq.Parameters.Mode == "" {
+		aliReq.Parameters.Mode = "wan-std"
+	}
+	// watermark 在上游协议中位于 input 内，从 parameters 透传值搬过来
+	aliReq.Input.Watermark = aliReq.Parameters.Watermark
+	if aliReq.Input.VideoURL == "" || aliReq.Input.ImageURL == "" {
+		return fmt.Errorf("%s requires reference video and image (metadata.content with video_url and image_url)", aliReq.Model)
+	}
+	return nil
+}
+
+// sanitizeAnimateRequest 只保留 animate 上游协议支持的字段，供序列化上行请求使用；
+// 计费仍走 convertToAliRequest 的完整结果（duration 等），不受影响
+func sanitizeAnimateRequest(aliReq *AliVideoRequest) *AliVideoRequest {
+	return &AliVideoRequest{
+		Model: aliReq.Model,
+		Input: AliVideoInput{
+			VideoURL:  aliReq.Input.VideoURL,
+			ImageURL:  aliReq.Input.ImageURL,
+			Watermark: aliReq.Input.Watermark,
+		},
+		Parameters: &AliVideoParameters{
+			Mode:       aliReq.Parameters.Mode,
+			CheckImage: aliReq.Parameters.CheckImage,
+		},
+	}
 }
 
 func firstNonEmpty(values ...string) string {
@@ -464,6 +588,11 @@ func (a *TaskAdaptor) convertToAliRequest(info *relaycommon.RelayInfo, req relay
 	if err := normalizeWan27I2VInput(aliReq, req); err != nil {
 		return nil, err
 	}
+	if isAnimateModel(aliReq.Model) {
+		if err := normalizeAnimateInput(aliReq, req); err != nil {
+			return nil, err
+		}
+	}
 	if strings.HasPrefix(strings.ToLower(info.OriginModelName), "happy-horse-") {
 		if len(req.Images) == 0 && req.Image == "" {
 			return nil, errors.New("HappyHorse reference video requires at least one image")
@@ -622,8 +751,8 @@ func (a *TaskAdaptor) ParseTaskResult(respBody []byte) (*relaycommon.TaskInfo, e
 		taskResult.Status = model.TaskStatusInProgress
 	case "SUCCEEDED":
 		taskResult.Status = model.TaskStatusSuccess
-		// 阿里直接返回视频URL，不需要额外的代理端点
-		taskResult.Url = aliResp.Output.VideoURL
+		// 阿里直接返回视频URL，不需要额外的代理端点（animate 模型在 output.results.video_url）
+		taskResult.Url = aliResp.Output.ResultVideoURL()
 	case "FAILED", "CANCELED", "UNKNOWN":
 		taskResult.Status = model.TaskStatusFailure
 		if aliResp.Message != "" {
@@ -654,8 +783,8 @@ func (a *TaskAdaptor) ConvertToOpenAIVideo(task *model.Task) ([]byte, error) {
 	openAIResp.CreatedAt = task.CreatedAt
 	openAIResp.CompletedAt = task.UpdatedAt
 
-	// 设置视频URL（核心字段）
-	openAIResp.SetMetadata("url", aliResp.Output.VideoURL)
+	// 设置视频URL（核心字段，兼容 animate 模型的 output.results.video_url）
+	openAIResp.SetMetadata("url", aliResp.Output.ResultVideoURL())
 
 	// 错误处理
 	if aliResp.Code != "" {
