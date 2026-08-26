@@ -79,6 +79,66 @@ type FileObject struct {
 	DownloadURL string `json:"download_url"`
 }
 
+// ============================
+// V2 API（MiniMax-H3）结构体
+// https://platform.minimaxi.com/docs/api-reference/video/generation/api/v2-video-generation.json
+// ============================
+
+// H3MediaURL V2 content 中媒体项的 url 包装
+type H3MediaURL struct {
+	URL string `json:"url"`
+}
+
+// H3ContentItem V2 多模态输入项；role: first_frame/last_frame/reference_image/reference_video/reference_audio
+type H3ContentItem struct {
+	Type     string      `json:"type"`
+	Text     string      `json:"text,omitempty"`
+	ImageURL *H3MediaURL `json:"image_url,omitempty"`
+	VideoURL *H3MediaURL `json:"video_url,omitempty"`
+	AudioURL *H3MediaURL `json:"audio_url,omitempty"`
+	Role     string      `json:"role,omitempty"`
+}
+
+// VideoV2Request POST /v2/video_generation 请求体
+type VideoV2Request struct {
+	Model         string          `json:"model"`
+	Content       []H3ContentItem `json:"content"`
+	Resolution    string          `json:"resolution"`
+	Duration      int             `json:"duration"`
+	Ratio         string          `json:"ratio,omitempty"`
+	CallbackURL   string          `json:"callback_url,omitempty"`
+	AigcWatermark *bool           `json:"aigc_watermark,omitempty"`
+}
+
+// VideoV2Task V2 查询接口返回的任务对象
+type VideoV2Task struct {
+	ID      string `json:"id"`
+	Model   string `json:"model"`
+	Status  string `json:"status"`
+	Content struct {
+		URL    string `json:"url,omitempty"`
+		Prompt string `json:"prompt,omitempty"`
+	} `json:"content"`
+	Error *struct {
+		Code    string `json:"code"`
+		Message string `json:"message"`
+	} `json:"error,omitempty"`
+	Resolution string `json:"resolution"`
+	Duration   int    `json:"duration"`
+	Ratio      string `json:"ratio"`
+	Usage      struct {
+		TotalSeconds    int `json:"total_seconds"`
+		InputSeconds    int `json:"input_seconds"`
+		OutputSeconds   int `json:"output_seconds"`
+		InputImageCount int `json:"input_image_count"`
+	} `json:"usage"`
+}
+
+// QueryTaskV2Response GET /v2/query/video_generation/{task_id} 响应体
+type QueryTaskV2Response struct {
+	Task *VideoV2Task `json:"task"`
+}
+
 func GetModelConfig(model string) ModelConfig {
 	configs := map[string]ModelConfig{
 		"MiniMax-Hailuo-2.3": {
